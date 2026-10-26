@@ -11,48 +11,55 @@
 
 ## Sound engine
 
-Each drone is a warm analog pad on two notes of the chord, its tone and its partner:
+Two layers: one drone underneath, an instrument on top.
 
-- each note two band-limited oscillators a few cents apart, so they beat; tension beats faster
-- the waves: with no planet the moon's (new a sine, waxing a triangle, full a saw, waning a pulse, blended around
-  the cycle); with a planet its engine's
-- the pulse's width going slowly round (PWM), and the pitch wandering like a worn tape (wow)
-- a sub an octave down, and pink noise
-- all driven (a soft saturation) into the drone's own resonant filter
-- breathing: each drone swells at its own slow rate
+**The drone**, soft, on the chord's root and its fifth, sliding to the next chord in 1.5 s:
 
-Drone A sits a little left, drone B a little right; in a storm A bends B's phase (cross-modulation) and both are
-ring-modulated. Nothing is ever still: each drone's pitch, cutoff, level and partner detune wander on their own,
-further with Kp. Then a 0.4 s ping-pong delay whose read wanders like tape, a warm drive over the sound and its
-echoes together, and a reverb: four all-passes diffuse the input into four long lines (68 to 105 ms) mixed by a
-Hadamard matrix, longer under clouds. The delay and the reverb take 103 KB of the WiFi heap.
+- each note three FM pairs (a sine carrier and a light modulator): two a few cents either side of the note, so they
+  beat, and one an octave up; the moon's light sets how much the modulators colour the sines (new moon nearly pure)
+- a sub an octave down, pink noise, a gentle filter (the sun opens it), a slow breath
+
+**The instrument** plays the whole chord, a seventh of the scale, an octave over the drone. Each new chord is
+attacked anew (the old one let go), so the chords are heard as chords. The pressure picks it (below); the settings'
+INSTRUMENT can fix one.
+
+| Instrument | Made of | Attack / release |
+| --- | --- | --- |
+| ORGAN | drawbars 16', 8', 4', 2 2/3', 2', 1 1/3' on one phase, a soft key click, a slow rotor between the sides | 0.03 / 0.35 s |
+| STRINGS | three saws a few cents apart, low-passed together | 1.1 / 2.2 s |
+| CHOIR | a saw with a vibrato and a breath, through three formants ("aah") | 0.9 / 1.8 s |
+| WARM PAD | two saws 9 cents either side, a tape wow, dark | 0.7 / 2.0 s |
+
+Then the arpeggiator's plucks, a slow stereo chorus, a 0.4 s ping-pong delay whose read wanders like tape, a warm
+drive over the sound and its echoes together, and a reverb: four all-passes diffuse the input into four long lines
+(68 to 105 ms) mixed by a Hadamard matrix, longer under clouds. In a storm (Kp 5 and up) the drone is ring-modulated.
+The delay, the reverb and the chorus take 107 KB of the WiFi heap.
 
 No presets, no scenes: the sound moves continuously, never jumps.
 
-## Planets: notes, chords, engines and voices
+## Planets: notes and chords
 
 The seven classical planets, the Sun and the Moon among them, can be chosen (SELECT) while they are up (in EDIT,
-any of them); when one sets, it goes. A planet brings three things:
+any of them); when one sets, it goes. A planet brings two things:
 
 - **Its note**: its period raised by octaves into hearing (Hans Cousto's cosmic octave): the Earth's year for the Sun,
   the synodic month for the Moon, each planet's orbit. TUNING COSMIC plays the exact frequency, EQUAL the nearest
   tempered note, NATURAL a natural note each, in the spheres' classical order outward (Moon C, Mercury D, Venus E,
   Sun F, Mars G, Jupiter A, Saturn B).
 - **Four chords** on that note, one every 10 s, in the mode the sun's height gives: Phrygian below -18 degrees,
-  Aeolian to -6, Dorian to the horizon, Mixolydian to 12, Ionian to 30, Lydian above. Drone 1 plays the chord's root,
-  its partner the fifth; drone 2 the third, its partner coloured by the pressure (the octave when high and steady, the
-  seventh as it falls, a suspended fourth and the ninth deep down).
-- **Its engine** for the drones, gliding in over two seconds.
+  Aeolian to -6, Dorian to the horizon, Mixolydian to 12, Ionian to 30, Lydian above.
 
-| Planet | Note (cosmic) | Natural | Chords (degrees) | Engine |
-| --- | --- | --- | --- | --- |
-| Sun | 126.22 Hz (B) | F | I V VI IV | SUN PAD: saws 18 cents apart, open |
-| Moon | 210.42 Hz (G#) | C | I VI III IV | MOON: a slow PWM, singing filter |
-| Mercury | 141.27 Hz (C#) | D | I II IV V | GLASS: sines 20 cents apart, wide |
-| Venus | 221.23 Hz (A) | E | I IV VI V | WARM: saws and triangles, dark |
-| Mars | 144.72 Hz (D) | G | I VII VI V | TAPE: pulse and saw, driven, a strong wow |
-| Jupiter | 183.58 Hz (F#) | A | I IV II V | DRONE: deep saws, a heavy sub |
-| Saturn | 147.85 Hz (D) | B | I III VII VI | HAZE: triangles in noise, wide |
+The sound is not the planet's: the instrument is the pressure's.
+
+| Planet | Note (cosmic) | Natural | Chords (degrees) |
+| --- | --- | --- | --- |
+| Sun | 126.22 Hz (B) | F | I V VI IV |
+| Moon | 210.42 Hz (G#) | C | I VI III IV |
+| Mercury | 141.27 Hz (C#) | D | I II IV V |
+| Venus | 221.23 Hz (A) | E | I IV VI V |
+| Mars | 144.72 Hz (D) | G | I VII VI V |
+| Jupiter | 183.58 Hz (F#) | A | I IV II V |
+| Saturn | 147.85 Hz (D) | B | I III VII VI |
 
 ## The arpeggiator
 
@@ -64,11 +71,10 @@ lights up: a star flashes, a planet glows.
 
 ## Chords
 
-The drones always play a chord: drone 1 its root, its partner the fifth; drone 2 the third (a suspended fourth when
-the pressure is deep down), its partner coloured by the pressure (the octave high and steady, the seventh as it
-falls, the ninth deep down), in the sun's mode. Four chords always go round, one every 10 s: with no planet on the
-last key's note, with one on the planet's; a key plays the chord of the scale on its note for a while (held and 10 s
-after). SEL in the settings' PRESS HARMONY leaves the pressure out: plain triads.
+Always a chord, the seventh chord of the scale on a degree, in the sun's mode: the drone holds its root and fifth,
+the instrument the four notes an octave up. Four chords always go round, one every 10 s: with no planet on the last
+key's note, with one on the planet's; a key plays the chord of the scale on its note for a while (held and 10 s
+after).
 
 ## Sources and what they do
 
@@ -76,9 +82,9 @@ The slower a source changes, the more drastic its effect. Otherwise the sound st
 
 | Source | Pace | Controls | Depth |
 | --- | --- | --- | --- |
-| **Moon phase** | ~29.5 days | The instrument's character: oscillator types and base timbre, plus the sub level | Drastic. Each phase is a different world: new moon, pure sines; waxing, soft triangles; full, rich saws with full sub and high resonance; waning, a rough pulse. Morphs continuously over days. A chosen planet brings its own waves. |
-| **Pressure** | days | Harmony: the interval of each drone's partner, and how fast they beat (SEL leaves it out: octaves) | Drastic. High: consonances, a slow beat. Falling: minor colours, tension, faster beating. Very low (storm): tritone, clusters. The trend over the last hours counts more than the value. |
-| **Kp index** | hours; storms are rare | Events: low Kp, a gentle drift; Kp 5 and up turns on ring mod and cross-modulation | Rare but drastic |
+| **Pressure** | hours to days | The instrument: 1020 hPa and up the ORGAN, 1012 to 1020 STRINGS, 1004 to 1012 the WARM PAD, below 1004 the CHOIR (1.5 hPa either side before it changes); how fast the drone beats | Drastic: a new instrument from the next chord |
+| **Moon phase** | ~29.5 days | The drone's light: how much the modulators colour its sines, the sub, the filter's resonance | New moon nearly pure sines; full, a veil of harmonics, a full sub, a singing filter |
+| **Kp index** | hours; storms are rare | Events: low Kp, a gentle drift; Kp 5 and up ring-modulates the drone | Rare but drastic |
 | **Cloud cover** | hours | Space: reverb, delay, noise | Medium |
 | **Sun height** | continuous, daily | Light: filter cutoff (450 Hz at night, 1.2 kHz at the horizon, 7 kHz high) | Gentle |
 
@@ -113,7 +119,7 @@ For players who do not want to connect it:
 | **SEL** | the next planet up (in EDIT any of the seven classical ones), or none |
 | **LFO** | the sky alone (a touch brings the readings back for two seconds), and back |
 | **ARP** | the ARP screen: the sky, the arpeggiator on, its line, what it plays lighting up; again: off, and back |
-| **GLO** | the settings: latitude, longitude, UTC offset, summer time, date, time (local), the pressure in the harmony, the tuning (COSMIC, EQUAL or NATURAL) |
+| **GLO** | the settings: latitude, longitude, UTC offset, summer time, date, time (local), the instrument (AUTO: the pressure's, or ORGAN, STRINGS, CHOIR, WARM PAD), the tuning (COSMIC, EQUAL or NATURAL) |
 | **PLAY** | the sky stopped or playing; stopped, a key still sounds its chord, held and for 10 s after. Stopping saves |
 | **Lights** | the buttons that do something glow, the ones in use bright; the keys of the scale glow, the root's bright |
 | **OCT− / OCT+** | the octave |
@@ -130,7 +136,7 @@ COSMOS                 A2 E3
 ----------------------------
 SUN     +38°    FILTER    62
 CLOUDS   72%    REVERB    71
-PRESS 1008 ↓    INTERVAL  P5
+PRESS 1008 ↓       STRINGS
 KP         4    DRIFT     44
 MOON     83%    SUB       83
 ----------------------------
@@ -138,7 +144,7 @@ SKY 100%         UPD 12 MIN
 ```
 
 - Left: the reading from the world. Right: what it is doing to the sound.
-- PRESS shows the trend: ↑ rising, ↓ falling, → steady. INTERVAL uses interval names (P5, P8, m3...).
+- PRESS shows the trend: ↑ rising, ↓ falling, → steady. On its right, the instrument the pressure picks.
 - The readings stay. On the sky alone (LFO, ARP) they fade in (0.3 s) on a touch, hold (2 s after the last touch),
   then fade out (1.5 s). See `docs/img/rome-2026-11-09-fade.gif`.
 - Saving to flash silences the sound for a moment, so COSMOS saves only when PLAY stops it and when the settings

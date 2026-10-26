@@ -18,16 +18,16 @@
  *   GLO    the settings      PLAY the sky stopped or playing (stopping saves)      OCT- / OCT+ the octave
  *   MASTER the volume. The buttons that do something glow, the ones in use bright; the keys glow on the scale,
  *   bright on its root. Saving silences the sound for a moment: only stopping (PLAY) and leaving GLO save.
- * THE HARMONY. The drones always play a chord: drone 1 its root, its partner the fifth, drone 2 the third (a fourth,
- * suspended, when the pressure is deep down), its partner coloured by the pressure (the octave high and steady, the
- * seventh as it falls, the ninth deep down), in the mode the sun's height gives (Phrygian at night .. Lydian at
- * noon). With no planet the chord is on the last key's note. A chosen planet brings its note (its period raised by
- * octaves into hearing: Cousto's cosmic octave, exact under TUNING COSMIC, the nearest tempered note under EQUAL;
- * under NATURAL a natural note each, the spheres' classical order from the Moon's C to Saturn's B) and four chords of
- * its own on its scale, one every 10 s; a key then plays the chord of the scale on its note, held and for 10 s after,
+ * THE HARMONY. Always a chord, a seventh of the scale: the drone holds its root and fifth, sliding to the next in
+ * 1.5 s; the instrument on top plays the four notes an octave up and attacks each chord anew. The pressure picks the
+ * instrument (the settings' INSTRUMENT can fix one): high, the organ; fair, strings; falling, the warm pad; low, the
+ * choir. The mode is the sun's height's (Phrygian at night .. Lydian at noon). Four chords go round, one every 10 s:
+ * with no planet on the last key's note; a chosen planet brings its note (its period raised by octaves into hearing:
+ * Cousto's cosmic octave, exact under TUNING COSMIC, the nearest tempered note under EQUAL; under NATURAL a natural
+ * note each, the spheres' classical order from the Moon's C to Saturn's B) and four chords of its own on its scale; a key then plays the chord of the scale on its note, held and for 10 s after,
  * and the four come back. With the sky stopped, a key still sounds its chord, held and for 10 s after.
  * THE SETTINGS (GLO): latitude, longitude, the offset from UTC, summer time, the date and the time (local), the
- * pressure in the harmony, the tuning. SELECT picks a row, ALGO changes it a step, PRESET a big step, GLO or HOME
+ * instrument (AUTO: the pressure's), the tuning. SELECT picks a row, ALGO changes it a step, PRESET a big step, GLO or HOME
  * saves and goes back. Without WiFi (stage 3) the clock runs from the time set here.
  * Part of the unity build (device/unity.c), after the platform: gfx.c is in scope. */
 #include "fastmath.h"
@@ -55,7 +55,8 @@ static struct {                          /* kept in the store (OBJ_SETTINGS) */
     uint32_t unix_saved;                 /* the clock when it was saved */
     int16_t lat100, lon100;              /* the place: hundredths of a degree, north and east positive */
     int8_t utc4;                         /* the offset from UTC, quarter hours */
-    uint8_t summer, manual, linked;      /* summer time; EDIT (else HOME: nature); the pressure in the harmony */
+    uint8_t summer, manual, inst;        /* summer time; EDIT (else HOME: nature); the instrument: 0 or 1 the
+                                          * pressure's (AUTO), 2..5 one fixed (ORGAN, STRINGS, CHOIR, WARM PAD) */
     uint8_t octave, tuning;              /* tuning 0 COSMIC, 1 EQUAL, 2 NATURAL */
     uint8_t pc[2];                       /* with no planet, the chord's root: a pitch class ([1] unused) */
     int8_t trend;
@@ -196,22 +197,40 @@ static int32_t key_degree(int32_t note, float root)
 static void harmony(void)
 {
     uint32_t now = plat_ms();
-    int32_t p = sky.planet, i, a, b, top, d = 0;
-    float root, t = sky.linked ? tension(&sky) : -1.0f;
+    int32_t p = sky.planet, i, d = 0;
+    float root;
     ui.mode = mode_of_sun(sky.sun);
     root = p == PL_NONE ? 440.0f * fm_exp2f((float)(12 * (set.octave + 1) + set.pc[0] - 69) / 12.0f) : root_hz(p);
     ui.chord = (int32_t)((now - ui.chords_t0) / CHORD_MS % 4u);   /* with a planet or not, the four go round */
     d = now < ui.key_until && p != PL_NONE ? ui.key_deg : PROG[p][ui.chord];
-    a = d;
-    b = t >= 1.3f ? d + 3 : d + 2;       /* deep low pressure: a suspension */
-    /* drone 2's partner: the octave of the root high and steady, the seventh as it falls, the ninth deep down */
-    top = t < 0.3f ? a + 7 : t < 1.3f ? b + 4 : b + 5;
-    while (semis(top) <= semis(b))
-        top += 7;
-    sky.hz[0] = root * ratio(semis(a));
-    sky.hz[1] = root * ratio(semis(b));
-    sky.pr[0] = ratio(semis(a + 4) - semis(a));   /* drone 1's partner: the fifth */
-    sky.pr[1] = ratio(semis(top) - semis(b));
+    sky.hz[0] = root * ratio(semis(d));  /* the drone: the root, its partner the fifth */
+    sky.pr[0] = ratio(semis(d + 4) - semis(d));
+    sky.hz[1] = sky.hz[0];
+    sky.pr[1] = sky.pr[0];
+    {   /* the instrument: the seventh chord of the scale on the degree, an octave over the drone; a new one attacked */
+        int changed = 0;
+        for (i = 0; i < NCHORD; i++) {
+            float f = root * 2.0f * ratio(semis(d + 2 * i));
+            if (fm_fabsf(f - sky.notes[i]) > f * 0.001f)
+                changed = 1;
+            sky.notes[i] = f;
+        }
+        if (changed)
+            sky.chord_n++;
+    }
+    {   /* the instrument: fixed, or the pressure's (1.5 hPa either way before it changes) */
+        static const float EDGE[3] = {1004.0f, 1012.0f, 1020.0f};   /* below: CHOIR, WARM PAD, STRINGS; above, ORGAN */
+        static const int8_t BAND[4] = {2, 3, 1, 0};
+        int32_t lo = 0, hi = 0;
+        for (i = 0; i < 3; i++) {
+            lo += sky.press - 1.5f >= EDGE[i];
+            hi += sky.press + 1.5f >= EDGE[i];
+        }
+        if (set.inst >= 2 && set.inst <= 5)
+            sky.engine = set.inst - 2;
+        else if (lo == hi)
+            sky.engine = BAND[lo];
+    }
     sky.root_hz = root;
     for (i = 0; i < 7; i++)
         sky.scale[i] = MODES[ui.mode][i];
@@ -227,7 +246,7 @@ static void defaults(void)
     set.summer = 0;
     set.manual = 0;
     set.arp = 1;
-    set.linked = 1;
+    set.inst = 1;
     set.octave = 2;
     set.tuning = 0;
     set.pc[0] = 9;
@@ -246,7 +265,6 @@ static void save(void)
     set.press = sky.press;
     set.kp = sky.kp;
     set.trend = (int8_t)sky.trend;
-    set.linked = (uint8_t)sky.linked;
     set.sun = sky.sun;
     set.moon = sky.moon;
     plat_store_save(OBJ_SETTINGS, &set, sizeof set);
@@ -265,7 +283,6 @@ void app_init(void)
     sky.press = set.press;
     sky.kp = set.kp;
     sky.trend = set.trend;
-    sky.linked = set.linked;
     sky.sun = set.sun;
     sky.moon = set.moon;
     eng_ok = eng_init() == 0;            /* the delay and the reverb, before WiFi takes the heap */
@@ -505,9 +522,7 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
     sky_map(&sky, &m);
     for (i = 0; i < NLINES; i++)
         col[i] = C_TXT;
-    q = note_name(v, sky.hz[0]);
-    q = put(q, " ");
-    note_name(q, sky.hz[1]);
+    note_name(v, sky.hz[0]);             /* the drone's root */
     line2(lines[0], sky.on ? "COSMOS" : "COSMOS  (OFF)", v);
     copy(lines[1], "----------------------------", 32);
     col[1] = C_LOW;
@@ -526,10 +541,7 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
     q = put_int(v, round_f(sky.press));
     put(q, sky.trend < 0 ? " v" : sky.trend > 0 ? " ^" : " =");
     field(l, "PRESS", v, 12);
-    {   /* the chord's colour */
-        float t = sky.linked ? tension(&sky) : -1.0f;
-        field(r, "CHORD", t < 0.3f ? "TRIAD" : t < 1.3f ? "7TH" : "SUS 9", 12);
-    }
+    field(r, "", engine_name(sky.engine), 12);   /* the instrument it picks */
     line2(lines[4], l, r);
     q = put_int(v, round_f(sky.kp * 10.0f) / 10);
     q = put(q, ".");
@@ -549,9 +561,8 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
     line2(lines[6], l, r);
     copy(lines[7], "----------------------------", 32);
     col[7] = C_LOW;
-    if (sky.planet != PL_NONE) {         /* the planet, its voice; the mode and the chord */
-        q = put(l, planet_name(sky.planet));
-        put(put(q, " "), planet_voice(sky.planet));
+    if (sky.planet != PL_NONE) {         /* the planet; the mode and the chord */
+        put(l, planet_name(sky.planet));
         q = put(v, MODE_NAME[ui.mode]);
         put(put(q, " "), ROMAN[PROG[sky.planet][ui.chord] % 7]);
         line2(lines[8], l, v);
@@ -702,7 +713,7 @@ static void sky_frame(void)
 static void settings_frame(void)
 {
     static const char *const LABEL[NROWS] = {"LATITUDE", "LONGITUDE", "UTC", "SUMMER TIME", "DATE", "TIME",
-                                             "PRESS HARMONY", "TUNING"};
+                                             "INSTRUMENT", "TUNING"};
     char t[32], v[24], l[24], *q;
     int32_t y, mo, d, h, mi, i;
     local_time(unix_now(), &y, &mo, &d, &h, &mi);
@@ -748,7 +759,7 @@ static void settings_frame(void)
                 put2(q, mi);
                 break;
             case 6:
-                copy(v, sky.linked ? "ON" : "OFF", 24);
+                copy(v, set.inst >= 2 && set.inst <= 5 ? engine_name(set.inst - 2) : "AUTO", 24);
                 break;
             default:
                 copy(v, set.tuning == 0 ? "COSMIC" : set.tuning == 1 ? "EQUAL" : "NATURAL", 24);
@@ -815,8 +826,9 @@ static void settings_change(int32_t step, int big)
     case 5:
         clock_set(u + (uint32_t)(step * (big ? 3600 : 60)));
         break;
-    case 6:
-        sky.linked = !sky.linked;
+    case 6:                              /* AUTO (the pressure's), ORGAN, STRINGS, CHOIR, WARM PAD */
+        set.inst = (uint8_t)((set.inst < 2 ? 0 : set.inst - 1) + 5 + (step > 0 ? 1 : -1)) % 5;
+        set.inst = set.inst ? (uint8_t)(set.inst + 1) : 1;
         break;
     default:
         set.tuning = (uint8_t)((set.tuning + 3 + (step > 0 ? 1 : -1)) % 3);
@@ -995,7 +1007,7 @@ static void input(void)
             sky.planet = p;
             ui.chords_t0 = now;          /* its chords from the first */
             ui.key_until = 0;
-            app_say(p == PL_NONE ? "NO PLANET" : planet_name(p), p == PL_NONE ? "" : planet_voice(p));
+            app_say(p == PL_NONE ? "NO PLANET" : planet_name(p), p == PL_NONE ? "" : "ITS SCALE");
         }
     }
     if (down >> B_OCTDN & 1u && set.octave > 1) { set.octave--; ui.dirty = 1; }

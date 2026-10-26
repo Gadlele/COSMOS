@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>COSMOS · firmware for the M-VAVE FM-1</title>
-<meta name="description" content="A drone synthesizer for the M-VAVE FM-1, played by the sky: the sun, the clouds, the air pressure, the geomagnetic activity and the moon shape two endless drones.">
+<meta name="description" content="A drone synthesizer for the M-VAVE FM-1, played by the sky: the sun, the clouds, the air pressure, the geomagnetic activity and the moon shape a drone and the instrument above it.">
 <meta property="og:title" content="COSMOS">
 <meta property="og:description" content="A drone synthesizer for the M-VAVE FM-1, played by the sky.">
 <meta property="og:image" content="img/splash.gif">
@@ -97,7 +97,7 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
     <div>
       <div class="kicker">Firmware for the M-VAVE FM-1 · in the making</div>
       <h1>COSMOS</h1>
-      <p class="lead">A drone synthesizer played by the sky. The sun, the clouds, the air pressure, the geomagnetic activity and the moon shape two endless drones, and the screen is the real sky above you.</p>
+      <p class="lead">A drone synthesizer played by the sky. The sun, the clouds, the air pressure, the geomagnetic activity and the moon shape a drone and the instrument above it, and the screen is the real sky above you.</p>
       <div class="cta">
         <a class="btn primary" href="try/">Hear it in your browser</a>
         <a class="btn ghost" href="install/">Install on your FM-1</a>
@@ -115,7 +115,8 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
       <h2>Where it stands</h2>
       <p class="date">2026-10-26</p>
       <ul>
-        <li><b>COSMOS 0.9, the pads</b>: the drones are now warm analog pads, each note two oscillators a few cents apart, with a slow PWM and a tape wow; each planet its own (SUN PAD, MOON, GLASS, WARM, TAPE, DRONE, HAZE), the moon's waves with none. The night is less muffled, so the chords are heard. The brightest stars stay on the screen even under clouds and by day, faint. <a href="install/">Install it</a>.</li>
+        <li><b>COSMOS 0.10, the instruments</b>: one soft drone underneath (FM, sliding to each chord in 1.5 s), and on top an instrument playing the whole chord, attacked anew at each change: ORGAN, STRINGS, CHOIR or WARM PAD. The pressure picks it (high the organ, low the choir), or the settings fix one. The planets give the scale and the chords. <a href="install/">Install it</a>.</li>
+        <li><b>COSMOS 0.9, the pads</b>: the drones are now warm analog pads, each note two oscillators a few cents apart, with a slow PWM and a tape wow; each planet its own (SUN PAD, MOON, GLASS, WARM, TAPE, DRONE, HAZE), the moon's waves with none. The night is less muffled, so the chords are heard. The brightest stars stay on the screen even under clouds and by day, faint.</li>
         <li><b>COSMOS 0.8, the arpeggiator</b>: a line sweeps the sky and the stars it crosses play the scale by their height, the planets louder; <span class="keys">ARP</span> shows it, and what plays lights up. <span class="keys">LFO</span> shows the sky alone; the readings stay otherwise. The planets' bells are gone, the chords never stop going round, the buttons in use light up, and saving no longer breaks the sound while you play: COSMOS saves only when you stop it or leave the settings.</li>
         <li><b>COSMOS 0.7, the buttons</b>: HOME back to nature, EDIT the whole sky by hand on the knobs, SEL the planets, GLO the settings. The keyboard is one: a key plays the chord on its note (with a planet, the chord of its scale), and plays even with the sky stopped.</li>
         <li><b>COSMOS 0.6, the harmony</b>: the seven classical planets, each with its note (TUNING COSMIC, EQUAL or NATURAL) and four chords of its own, one every 10 seconds, in the mode the sun's height gives, coloured by the pressure.</li>
@@ -129,7 +130,8 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
     <aside class="versions">
       <h3>Versions</h3>
       <ul>
-        <li><a href="firmware/cosmos-0.9.fwsc"><b>COSMOS 0.9</b></a><span>2026-10-26</span> <em>pads</em></li>
+        <li><a href="firmware/cosmos-0.10.fwsc"><b>COSMOS 0.10</b></a><span>2026-10-26</span> <em>instruments</em></li>
+        <li><b>COSMOS 0.9</b><span>2026-10-26</span></li>
         <li><b>COSMOS 0.8</b><span>2026-10-26</span></li>
         <li><b>COSMOS 0.7</b><span>2026-10-26</span></li>
         <li><b>COSMOS 0.6</b><span>2026-10-26</span></li>
@@ -149,14 +151,14 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
 <section>
   <div class="wrap">
     <h2>Played by the sky</h2>
-    <p class="sub">Every half hour the FM-1 asks the sky how it is, then lets the sound glide there. The slower a source changes, the deeper it reaches: the moon and the pressure decide what instrument COSMOS is this week, a geomagnetic storm tears it apart now and then, the clouds and the sun colour it through the day.</p>
+    <p class="sub">Every half hour the FM-1 asks the sky how it is, then lets the sound glide there. The slower a source changes, the deeper it reaches: the pressure decides what instrument COSMOS is, the moon how pure its drone, a geomagnetic storm tears it apart now and then, the clouds and the sun colour it through the day.</p>
     <div class="features">
-      <div class="feature" style="--c:#cfd8ff"><h3>Moon</h3><p class="pace">29.5 days · drastic</p><p>The instrument's <b>character</b>. New moon: pure sines. Waxing: soft triangles. Full: rich saws, a heavy sub and a singing resonance. Waning: a rough pulse. (A planet, when chosen, brings its own waves.)</p></div>
-      <div class="feature" style="--c:#9fb4ff"><h3>Pressure</h3><p class="pace">days · drastic</p><p>The <b>harmony</b> between the two drones. High and steady: octaves and fifths. Falling: minor colours and tension. A deep low: tritones and clusters.</p></div>
+      <div class="feature" style="--c:#cfd8ff"><h3>Moon</h3><p class="pace">29.5 days</p><p>The <b>light</b> of the drone. New moon: nearly pure sines. Full: a veil of harmonics, a heavy sub and a singing resonance.</p></div>
+      <div class="feature" style="--c:#9fb4ff"><h3>Pressure</h3><p class="pace">hours to days · drastic</p><p>The <b>instrument</b> playing the chords. High: an organ. Fair: strings. Falling: a warm pad. Low, rain and storms: a choir.</p></div>
       <div class="feature" style="--c:#ffb38a"><h3>Kp index</h3><p class="pace">hours · storms are rare</p><p>The <b>storms</b>. A quiet sun gives a gentle drift. A geomagnetic storm turns on ring and cross-modulation, and the stars on the screen shiver.</p></div>
       <div class="feature" style="--c:#8f96ad"><h3>Clouds</h3><p class="pace">hours · medium</p><p>The <b>space</b>. A clear sky is dry and near; an overcast one washes the drones in reverb, delay and noise, and hides the stars.</p></div>
       <div class="feature" style="--c:#ffe1a8"><h3>Sun</h3><p class="pace">every day · gentle</p><p>The <b>light</b>. Its height opens the filter from the dark of night to the brightness of noon, and follows the seasons by itself.</p></div>
-      <div class="feature" style="--c:#e9ecf5"><h3>Planets</h3><p class="pace">while they are in sight</p><p>The <b>structure</b>. A planet in the sky can be chosen: its note, its four chords, its engine. And the arpeggiator plays the stars and the planets as a line sweeps across them.</p></div>
+      <div class="feature" style="--c:#e9ecf5"><h3>Planets</h3><p class="pace">while they are in sight</p><p>The <b>structure</b>. A planet in the sky can be chosen: its note and its four chords. And the arpeggiator plays the stars and the planets as a line sweeps across them.</p></div>
     </div>
   </div>
 </section>
@@ -183,9 +185,9 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
     <p class="sub">On a computer with Chrome or Edge and the FM-1 on USB. Installing firmware is at your own risk; the installer puts M-VAVE's own firmware back too. Decline m-bootloader when it is offered: COSMOS does not need it.</p>
     <ol class="steps">
       <li><span><b>Install</b> from the <a href="install/">installer</a>. The FM-1 restarts as COSMOS: the readings over the sky.</span></li>
-      <li><span><b>Set your place and time</b>: <span class="keys">GLO</span> opens the settings. <span class="keys">SELECT</span> picks a row (latitude, longitude, UTC offset, summer time, date, time, the pressure in the harmony, tuning), <span class="keys">ALGO</span> changes it a step, <span class="keys">PRESET</span> a big step, <span class="keys">GLO</span> saves and goes back.</span></li>
+      <li><span><b>Set your place and time</b>: <span class="keys">GLO</span> opens the settings. <span class="keys">SELECT</span> picks a row (latitude, longitude, UTC offset, summer time, date, time, instrument, tuning), <span class="keys">ALGO</span> changes it a step, <span class="keys">PRESET</span> a big step, <span class="keys">GLO</span> saves and goes back.</span></li>
       <li><span><b>Nature or your hands</b>: <span class="keys">HOME</span> gives everything back to nature: the sun and the moon as they are, the weather as it comes. <span class="keys">EDIT</span> puts the whole sky on the knobs: <span class="keys">K1</span> the sun, <span class="keys">K2</span> the clouds, <span class="keys">K3</span> the pressure, <span class="keys">K4</span> Kp, <span class="keys">ALGO</span> the moon, <span class="keys">PRESET</span> the pressure's trend.</span></li>
-      <li><span><b>The planets</b>: <span class="keys">SEL</span> goes round the seven in the sky (in EDIT all seven), the Sun and the Moon among them, and none. The one chosen gets four corners and plays its note, its four chords (one every 10 seconds) and its engine. When it sets, it goes.</span></li>
+      <li><span><b>The planets</b>: <span class="keys">SEL</span> goes round the seven in the sky (in EDIT all seven), the Sun and the Moon among them, and none. The one chosen gets four corners and plays its note and its four chords (one every 10 seconds). When it sets, it goes.</span></li>
       <li><span><b>The sky</b>: <span class="keys">LFO</span> leaves the sky alone on the screen, and back. <span class="keys">ARP</span> shows the arpeggiator: a line sweeping the sky, the stars and planets it crosses playing and lighting up; <span class="keys">ARP</span> again turns it off. The buttons that do something glow, the keys glow on the scale.</span></li>
       <li><span><b>The keys</b>: a key plays the chord on its note; with a planet, the chord of its scale for a while, then its four come back. <span class="keys">PLAY</span> stops the sky (and saves); stopped, the keys still play. <span class="keys">OCT−</span> <span class="keys">OCT+</span> the octave, <span class="keys">MASTER</span> the volume.</span></li>
       <li><span><b>Back to stock</b>: "Back to the stock firmware" on the installer page.</span></li>
