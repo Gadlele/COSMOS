@@ -1,0 +1,596 @@
+<title>COSMOS Emulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@400;600&family=Instrument+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: an instrument at night. The FM-1's screen leads; the sky's five sources sit below it as one console. */
+:root {
+  --night: #06080e;        /* page */
+  --panel: #0d111c;        /* console */
+  --rule: #1c2234;
+  --star: #e9ecf5;         /* text, the screen's white */
+  --dust: #8b91a8;         /* labels */
+  --moon: #cfd8ff;         /* accent: moonlight */
+  --storm: #ffb38a;        /* Kp storm */
+  --mono: "Martian Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --sans: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+html, body { height: auto; }
+body {
+  background: var(--night); color: var(--star); font: 15px/1.5 var(--sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 24px; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); align-items: start; }
+@media (max-width: 760px) { .wrap { grid-template-columns: minmax(0, 1fr); } }
+h1 { font: 600 13px/1 var(--mono); letter-spacing: .28em; margin: 0 0 4px; }
+.sub { color: var(--dust); font-size: 13px; margin: 0 0 14px; max-width: 60ch; }
+.device { display: grid; gap: 14px; position: sticky; top: env(safe-area-inset-top, 0px); }
+@media (max-width: 760px) { .device { position: static; } }
+.screen {
+  width: 100%; aspect-ratio: 1; max-width: 100%; display: block; image-rendering: pixelated;
+  background: #000; border: 10px solid #151a27; border-radius: 6px; box-sizing: border-box; cursor: pointer;
+}
+.transport { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+button {
+  font: 600 12px/1 var(--mono); letter-spacing: .12em; color: var(--star); background: var(--panel);
+  border: 1px solid var(--rule); border-radius: 4px; padding: 11px 14px; cursor: pointer;
+}
+button:hover { border-color: var(--dust); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--moon); outline-offset: 2px; }
+button.on { background: var(--moon); color: var(--night); border-color: var(--moon); }
+#play { flex: 1 1 auto; min-width: 120px; }
+.vol { display: flex; gap: 8px; align-items: center; flex: 1 1 140px; color: var(--dust); font: 11px var(--mono); letter-spacing: .1em; }
+.keys { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3px; }
+.keys button { padding: 12px 0; font-size: 11px; letter-spacing: 0; }
+.keys button.black { background: #05070b; }
+.keys button.on { background: var(--moon); color: var(--night); }
+.oct { display: flex; gap: 8px; align-items: center; color: var(--dust); font: 11px var(--mono); letter-spacing: .1em; }
+.oct output { color: var(--star); min-width: 2ch; text-align: center; }
+.planets { display: grid; gap: 6px; }
+.plabel { font: 600 11px/1 var(--mono); letter-spacing: .16em; color: var(--dust); }
+.pl { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+.pl button { padding: 9px 2px; font-size: 11px; letter-spacing: .06em; display: grid; gap: 3px; }
+.pl button small { font: 400 9px var(--mono); color: var(--dust); letter-spacing: .04em; }
+.pl button.on small { color: var(--night); }
+.pl button:disabled { opacity: .32; cursor: not-allowed; }
+.pnote { color: var(--dust); font-size: 12px; margin: 0; min-height: 1.5em; }
+.console { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; display: grid; }
+.src { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 4px 14px; padding: 16px; border-bottom: 1px solid var(--rule); }
+.src:last-child { border-bottom: 0; }
+.src label { font: 600 11px/1.6 var(--mono); letter-spacing: .16em; }
+.src .val { font: 400 13px/1.6 var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.src .head { display: flex; justify-content: space-between; gap: 10px; grid-column: 2; }
+.src .pace { grid-column: 1; grid-row: 2 / span 2; color: var(--dust); font: 10px/1.5 var(--mono); letter-spacing: .06em; }
+.src input[type=range] { grid-column: 2; width: 100%; accent-color: var(--moon); margin: 2px 0; }
+.src .does { grid-column: 2; color: var(--dust); font-size: 13px; min-width: 0; }
+.src .does b { color: var(--star); font: 600 12px var(--mono); letter-spacing: .06em; }
+.src.storm .does b { color: var(--storm); }
+.seg { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.seg button { padding: 6px 10px; font-size: 12px; }
+.modes { display: flex; gap: 10px; flex-wrap: wrap; padding: 16px; border-bottom: 1px solid var(--rule); align-items: center; }
+.modes .note { color: var(--dust); font-size: 13px; flex: 1 1 220px; min-width: 0; }
+.foot { color: var(--dust); font-size: 13px; max-width: 65ch; margin: 18px 0 0; }
+@media (max-width: 480px) {
+  .src { grid-template-columns: minmax(0, 1fr); }
+  .src .pace { grid-column: 1; grid-row: auto; }
+  .src .head, .src input[type=range], .src .does { grid-column: 1; }
+  .seg button { padding: 6px 8px; font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <section class="device" aria-label="The FM-1">
+    <div>
+      <h1>COSMOS</h1>
+      <p class="sub">The sound of COSMOS, in the browser, while the FM-1 is at home. The screen shows the real sky over Rome now; touch it to see the readings.</p>
+    </div>
+    <canvas class="screen" id="screen" width="240" height="240" role="img" aria-label="The FM-1 screen: the sky over Rome, with the readings fading in on a touch"></canvas>
+    <div class="transport">
+      <button id="play" type="button">START THE DRONE</button>
+      <label class="vol" for="vol">VOL <input id="vol" type="range" min="0" max="100" value="70"></label>
+    </div>
+    <div class="keys" id="keys" aria-label="Base note"></div>
+    <div class="planets">
+      <span class="plabel">PLANETS ON THE SCREEN</span>
+      <div class="pl" id="planets" aria-label="Planets: each adds a voice while it is on the screen"></div>
+      <p class="pnote" id="pnote"></p>
+    </div>
+    <div class="oct">OCTAVE <button type="button" id="octdn" aria-label="Octave down">OCT−</button><output id="octv">2</output><button type="button" id="octup" aria-label="Octave up">OCT+</button></div>
+  </section>
+
+  <section class="console" aria-label="The sky">
+    <div class="modes">
+      <button type="button" id="real" class="on">REAL SKY</button>
+      <button type="button" id="rand">RANDOM WEATHER</button>
+      <span class="seg" id="speed" aria-label="Random weather speed">
+        <button type="button" data-s="60" class="on">×60</button><button type="button" data-s="600">×600</button><button type="button" data-s="3600">×3600</button>
+      </span>
+      <p class="note" id="modenote">Sun and moon follow the real sky over Rome. Move a slider to take it over.</p>
+    </div>
+
+    <div class="src">
+      <span class="pace">every day</span>
+      <div class="head"><label for="sun">SUN</label><output class="val" id="sunv"></output></div>
+      <input id="sun" type="range" min="-40" max="72" step="0.5" value="20">
+      <p class="does">Height above the horizon. Opens the <b id="sund">FILTER</b> from night to noon.</p>
+    </div>
+    <div class="src">
+      <span class="pace">hours</span>
+      <div class="head"><label for="clouds">CLOUDS</label><output class="val" id="cloudsv"></output></div>
+      <input id="clouds" type="range" min="0" max="100" step="1" value="30">
+      <p class="does">The space: <b id="cloudsd">REVERB</b>, delay and noise. Clear is dry and near, overcast washed out.</p>
+    </div>
+    <div class="src">
+      <span class="pace">days</span>
+      <div class="head"><label for="press">PRESS</label><output class="val" id="pressv"></output></div>
+      <input id="press" type="range" min="965" max="1045" step="0.5" value="1015">
+      <div class="head" style="justify-content:flex-start"><span class="seg" id="trend" aria-label="Pressure trend">
+        <button type="button" data-t="-1">↓ FALLING</button><button type="button" data-t="0" class="on">→ STEADY</button><button type="button" data-t="1">↑ RISING</button>
+      </span></div>
+      <p class="does">The harmony: <b id="pressd">P5</b> between the drones. High is consonant, a fall brings tension, a storm clusters.</p>
+    </div>
+    <div class="src" id="kprow">
+      <span class="pace">hours, storms rare</span>
+      <div class="head"><label for="kp">KP</label><output class="val" id="kpv"></output></div>
+      <input id="kp" type="range" min="0" max="9" step="0.33" value="1.67">
+      <p class="does">Geomagnetic activity: <b id="kpd">DRIFT</b>. From 5 a storm: ring and cross-modulation tear the sound.</p>
+    </div>
+    <div class="src">
+      <span class="pace">29.5 days</span>
+      <div class="head"><label for="moon">MOON</label><output class="val" id="moonv"></output></div>
+      <input id="moon" type="range" min="0" max="1" step="0.005" value="0.4">
+      <p class="does">The instrument's character and its <b id="moond">SUB</b>. New: pure dark sines. Waxing: soft. Full: rich, resonant, heavy. Waning: metallic.</p>
+    </div>
+  </section>
+</div>
+<p class="foot" style="max-width:980px;margin-inline:auto">A sketch of COSMOS's engine in Web Audio, to try the mappings. On the FM-1 the sound runs on the chip with lighter effects, so it will not be identical. Planets are placed by JPL's approximate orbits, good to about half a degree.</p>
+
+<script>
+const FONT16={" ":"00000000000000000000000000000000","!":"00001010101010101000101000000000","\"":"00242424000000000000000000000000","#":"00002424247E24247E24242400000000","$":"0010107C9290907C1212927C10100000","%":"0000649468081010202C524C00000000","&":"000018242418304A4444443A00000000","'":"00101010000000000000000000000000","(":"00000810202020202020100800000000",")":"00002010080808080808102000000000","*":"000000000024187E1824000000000000","+":"000000000010107C1010000000000000",",":"00000000000000000000101020000000","-":"000000000000007E0000000000000000",".":"00000000000000000000101000000000","/":"00000404080810102020404000000000","0":"00003C4242464A526242423C00000000","1":"00000818280808080808083E00000000","2":"00003C42420204081020407E00000000","3":"00003C4242021C020242423C00000000","4":"000002060A1222427E02020200000000","5":"00007E4040407C020202423C00000000","6":"00001C2040407C424242423C00000000","7":"00007E02020404080810101000000000","8":"00003C4242423C424242423C00000000","9":"00003C424242423E0202043800000000",":":"00000000001010000000101000000000",";":"00000000001010000000101020000000","<":"00000004081020402010080400000000","=":"00000000007E00007E00000000000000",">":"00000040201008040810204000000000","?":"00003C42424204080800080800000000","@":"00007C829EA2A2A2A69A807E00000000","A":"00003C424242427E4242424200000000","B":"00007C4242427C424242427C00000000","C":"00003C42424040404042423C00000000","D":"00007844424242424242447800000000","E":"00007E40404078404040407E00000000","F":"00007E40404078404040404000000000","G":"00003C424240404E4242423C00000000","H":"0000424242427E424242424200000000","I":"00003810101010101010103800000000","J":"00000E04040404040444443800000000","K":"00004244485060605048444200000000","L":"00004040404040404040407E00000000","M":"000082C6AA9292828282828200000000","N":"000042424262524A4642424200000000","O":"00003C42424242424242423C00000000","P":"00007C424242427C4040404000000000","Q":"00003C424242424242424A3C02000000","R":"00007C424242427C5048444200000000","S":"00003C4240403C020242423C00000000","T":"0000FE10101010101010101000000000","U":"00004242424242424242423C00000000","V":"00004242424242242424181800000000","W":"000082828282829292AAC68200000000","X":"00004242242418182424424200000000","Y":"00008282444428101010101000000000","Z":"00007E02020408102040407E00000000","[":"00003820202020202020203800000000","\\":"00004040202010100808040400000000","]":"00003808080808080808083800000000","^":"00102844000000000000000000000000","_":"000000000000000000000000007E0000","`":"10080000000000000000000000000000","a":"00000000003C023E4242423E00000000","b":"00004040407C42424242427C00000000","c":"00000000003C42404040423C00000000","d":"00000202023E42424242423E00000000","e":"00000000003C42427E40403C00000000","f":"00000E10107C10101010101000000000","g":"00000000003E42424242423E02023C00","h":"00004040407C42424242424200000000","i":"00001010003010101010103800000000","j":"00000404000C04040404040444443800","k":"00004040404244487048444200000000","l":"00003010101010101010103800000000","m":"0000000000FC92929292929200000000","n":"00000000007C42424242424200000000","o":"00000000003C42424242423C00000000","p":"00000000007C42424242427C40404000","q":"00000000003E42424242423E02020200","r":"00000000005E60404040404000000000","s":"00000000003E40403C02027C00000000","t":"00001010107C10101010100E00000000","u":"00000000004242424242423E00000000","v":"00000000004242422424181800000000","w":"00000000008282929292927C00000000","x":"00000000004242241824424200000000","y":"00000000004242424242423E02023C00","z":"00000000007E04081020407E00000000","{":"00000C10101020101010100C00000000","|":"00001010101010101010101000000000","}":"00003008080804080808083000000000","~":"0062928C000000000000000000000000","\u00b0":"00182424180000000000000000000000","\u2191":"00001038541010101010101000000000","\u2192":"00000000000804FE0408000000000000","\u2193":"00001010101010101054381000000000"};
+const STARS=[[44.565,-40.304,2.88],[24.43,-57.237,0.45],[186.649,-63.099,0.77],[104.656,-28.972,1.5],[104.656,-28.972,1.5],[210.955,-60.373,0.61],[292.68,27.96,3.05],[292.68,27.96,3.05],[206.884,49.313,1.85],[201.308,54.988,3.99],[56.871,24.105,2.85],[68.981,16.508,0.87],[319.647,62.586,2.45],[322.165,70.561,3.23],[3.309,15.184,2.83],[154.996,19.84,2.01],[47.042,40.956,2.09],[99.428,16.399,1.93],[193.509,55.96,1.76],[206.884,49.313,1.85],[30.975,42.329,2.1],[332.06,-46.962,1.73],[84.053,-1.202,1.69],[85.19,-1.943,1.74],[141.897,-8.658,1.99],[233.673,26.714,2.22],[2.098,29.089,2.07],[298.829,6.403,3.71],[297.7,8.871,0.76],[6.573,-42.309,2.4],[247.352,-26.432,1.06],[213.907,19.168,-0.05],[290.806,-44.8,4.27],[290.66,-44.459,3.96],[83.183,-17.822,2.58],[57.291,24.053,3.62],[252.167,-69.028,1.91],[125.628,-59.509,1.86],[81.283,6.35,1.64],[88.793,7.407,0.45],[95.988,-52.695,-0.62],[79.173,45.995,0.08],[2.302,59.148,2.28],[113.648,31.887,1.58],[265.868,4.568,2.76],[310.358,45.28,1.25],[177.261,14.571,2.14],[10.899,-17.986,2.04],[165.93,61.751,1.81],[56.219,24.113,3.72],[81.573,28.606,1.65],[269.151,51.489,2.24],[326.047,9.875,2.38],[269.151,51.489,2.24],[344.415,-29.623,1.17],[344.415,-29.623,1.17],[187.792,-57.115,1.59],[183.95,-17.542,2.58],[183.95,-17.542,2.58],[210.955,-60.373,0.61],[31.795,23.461,2.01],[221.246,27.074,2.35],[276.043,-34.386,1.79],[222.676,74.156,2.07],[56.457,24.367,3.87],[346.191,15.205,2.49],[183.858,57.033,3.32],[89.882,44.947,1.9],[45.57,4.089,2.54],[211.666,-36.374,2.06],[165.461,56.383,2.34],[56.582,23.948,4.14],[138.297,-69.716,1.67],[191.93,-59.689,1.25],[182.531,-22.62,3.02],[83.002,-0.299,2.25],[17.435,35.62,2.07],[51.081,49.861,1.79],[95.675,-17.956,1.98],[200.983,54.925,2.23],[120.896,-40.003,2.21],[82.061,-20.76,2.81],[283.816,-26.297,2.05],[306.412,-56.736,1.94],[178.459,53.695,2.41],[37.979,89.264,1.97],[116.324,28.026,1.16],[114.82,5.218,0.4],[258.662,14.391,2.78],[263.734,12.558,2.08],[152.091,11.967,1.36],[78.634,-8.202,0.18],[219.848,-60.83,-0.01],[290.972,-40.617,3.96],[257.595,-15.724,2.43],[331.446,-0.32,2.95],[305.557,40.257,2.23],[86.939,-9.67,2.07],[345.945,28.084,2.44],[10.127,56.537,2.24],[263.402,-37.104,1.62],[282.52,33.363,3.52],[101.283,-16.725,-1.44],[2.098,29.089,2.07],[201.298,-11.162,0.98],[136.999,-43.432,2.23],[284.736,32.69,3.25],[296.565,10.613,2.72],[56.302,24.467,4.3],[211.096,64.376,3.67],[236.068,6.426,2.63],[279.237,38.786,0.03],[195.542,10.959,2.85],[107.098,-26.393,1.83],[59.508,-13.509,2.97],[222.719,-16.042,2.75]];
+
+"use strict";
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const LAT = 41.9028, LON = 12.4964, RAD = Math.PI / 180;
+
+/* ---------- state: the five sources ---------- */
+const S = { sun: 20, clouds: 30, press: 1015, trend: 0, kp: 1.67, moon: 0.4, note: 9, oct: 2, vol: 0.7,
+            real: true, rand: false, speed: 60, planets: new Set() };
+
+/* ---------- astronomy (low precision: a degree is plenty on 240 pixels) ---------- */
+function days(t) { return t / 86400000 + 2440587.5 - 2451545.0; }
+function sunEq(d) {
+  const g = (357.529 + 0.98560028 * d) * RAD, q = 280.459 + 0.98564736 * d;
+  const L = (q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * RAD, e = (23.439 - 0.00000036 * d) * RAD;
+  return { ra: Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L)) / RAD, dec: Math.asin(Math.sin(e) * Math.sin(L)) / RAD, lon: L / RAD };
+}
+function moonEq(d) {
+  const L = 218.316 + 13.176396 * d, M = (134.963 + 13.064993 * d) * RAD, F = (93.272 + 13.229350 * d) * RAD;
+  const lon = (L + 6.289 * Math.sin(M)) * RAD, lat = 5.128 * Math.sin(F) * RAD, e = 23.439 * RAD;
+  return { ra: Math.atan2(Math.sin(lon) * Math.cos(e) - Math.tan(lat) * Math.sin(e), Math.cos(lon)) / RAD,
+           dec: Math.asin(Math.sin(lat) * Math.cos(e) + Math.cos(lat) * Math.sin(e) * Math.sin(lon)) / RAD, lon: lon / RAD };
+}
+function altaz(ra, dec, d) {
+  const lst = 280.46061837 + 360.98564736629 * d + LON, H = (lst - ra) * RAD, phi = LAT * RAD, de = dec * RAD;
+  const alt = Math.asin(Math.sin(phi) * Math.sin(de) + Math.cos(phi) * Math.cos(de) * Math.cos(H));
+  const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(phi) - Math.tan(de) * Math.cos(phi)) + Math.PI;
+  return { alt, az };
+}
+/* the planets: JPL's approximate Keplerian elements (J2000, and their rates a century) */
+const ELEM = {
+  Mercury: [0.38709927, 0.20563593, 7.00497902, 252.25032350, 77.45779628, 48.33076593, 0.00000037, 0.00001906, -0.00594749, 149472.67411175, 0.16047689, -0.12534081],
+  Venus: [0.72333566, 0.00677672, 3.39467605, 181.97909950, 131.60246718, 76.67984255, 0.00000390, -0.00004107, -0.00078890, 58517.81538729, 0.00268329, -0.27769418],
+  Earth: [1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0, 0.00000562, -0.00004392, -0.01294668, 35999.37244981, 0.32327364, 0],
+  Mars: [1.52371034, 0.09339410, 1.84969142, -4.55343205, -23.94362959, 49.55953891, 0.00001847, 0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343],
+  Jupiter: [5.20288700, 0.04838624, 1.30439695, 34.39644051, 14.72847983, 100.47390909, -0.00011607, -0.00013253, -0.00183714, 3034.74612775, 0.21252668, 0.20469106],
+  Saturn: [9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448, -0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794]
+};
+function helio(name, T) {
+  const el = ELEM[name], [a, e, I0, L, w, O0] = el.slice(0, 6).map((v, i) => v + el[i + 6] * T);
+  const M = ((L - w + 180) % 360 + 360) % 360 * RAD - Math.PI;
+  let E = M + e * Math.sin(M);
+  for (let i = 0; i < 8; i++) E -= (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+  const xp = a * (Math.cos(E) - e), yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
+  const om = (w - O0) * RAD, O = O0 * RAD, I = I0 * RAD, co = Math.cos(om), so = Math.sin(om), cO = Math.cos(O), sO = Math.sin(O), cI = Math.cos(I);
+  return [(co * cO - so * sO * cI) * xp + (-so * cO - co * sO * cI) * yp,
+          (co * sO + so * cO * cI) * xp + (-so * sO + co * cO * cI) * yp,
+          so * Math.sin(I) * xp + co * Math.sin(I) * yp];
+}
+const PLANETS = [   /* name, short, its voice, its orbit in years, a typical magnitude */
+  ["Mercury", "MER", "GLINT", 0.2408, -0.2], ["Venus", "VEN", "BELLS", 0.6152, -4.1], ["Mars", "MAR", "PULSE", 1.8808, 0.8],
+  ["Jupiter", "JUP", "SWELL", 11.862, -2.2], ["Saturn", "SAT", "RINGS", 29.457, 0.7]];
+function planetsNow(d) {
+  const T = d / 36525, g = helio("Earth", T), ep = 23.43928 * RAD;
+  return PLANETS.map(([name, , , , mag0]) => {
+    const p = helio(name, T), x = p[0] - g[0], y = p[1] - g[1], z = p[2] - g[2];
+    const ye = y * Math.cos(ep) - z * Math.sin(ep), ze = y * Math.sin(ep) + z * Math.cos(ep);
+    const r = Math.hypot(...p), delta = Math.hypot(x, y, z);
+    let mag = mag0;
+    if (name === "Mars") mag = -1.5 + 5 * Math.log10(r * delta);
+    const pos = altaz(Math.atan2(ye, x) / RAD, Math.atan2(ze, Math.hypot(x, ye)) / RAD, d);
+    return { name, alt: pos.alt, az: pos.az, mag };
+  });
+}
+function realSky(t) {
+  const d = days(t), s = sunEq(d), m = moonEq(d);
+  return { sun: altaz(s.ra, s.dec, d).alt / RAD, moon: (((m.lon - s.lon) % 360 + 360) % 360) / 360, d };
+}
+
+/* ---------- the mappings (COSMOS's design) ---------- */
+const INTERVALS = [["P8", 12], ["P5", 7], ["M6", 9], ["M3", 4], ["P4", 5], ["m3", 3], ["m6", 8], ["M2", 2], ["m7", 10], ["TT", 6], ["m2", 1]];
+function tension() { return (1013 - S.press) / 22 - S.trend * 0.6; }        /* -1.4 high and rising .. 2.6 deep and falling */
+function interval() { return INTERVALS[Math.round(clamp((tension() + 1.4) / 4, 0, 1) * (INTERVALS.length - 1))]; }
+function cutoff() {                                                         /* the sun: 160 Hz at night, ~7 kHz at noon */
+  const h = S.sun;
+  if (h < -18) return 160;
+  if (h < 0) return 160 * Math.pow(900 / 160, (h + 18) / 18);
+  return 900 * Math.pow(7000 / 900, clamp(h / 65, 0, 1));
+}
+function illum(p) { return (1 - Math.cos(2 * Math.PI * p)) / 2; }
+function moonWorld(p) { return ["NEW", "WAXING", "FULL", "WANING"][Math.round(p * 4) % 4]; }
+function drift() { return clamp(S.kp / 9, 0, 1); }
+function storm() { return clamp((S.kp - 4.5) / 4, 0, 1); }
+
+/* four characters for the moon's quarters, as harmonic spectra (sine terms), blended around the cycle */
+const NH = 40;
+const WORLDS = [
+  n => n === 1 ? 1 : n === 2 ? 0.04 : 0,                                    /* new: pure, dark */
+  n => n % 2 ? 1 / (n * n) * (n === 1 ? 1 : 1.6) : 0.15 / (n * n),          /* waxing: soft, rounded */
+  n => 1 / n,                                                               /* full: rich, every harmonic */
+  n => n === 1 ? 0.8 : [7, 9, 11, 13, 17, 19, 23].includes(n) ? 0.55 / Math.sqrt(n / 7) : 0   /* waning: metallic */
+];
+function spectrum(p) {
+  const x = ((p % 1) + 1) % 1 * 4, i = Math.floor(x) % 4, j = (i + 1) % 4, f = x - Math.floor(x), w = f * f * (3 - 2 * f);
+  const im = new Float32Array(NH + 1);
+  for (let n = 1; n <= NH; n++) im[n] = WORLDS[i](n) * (1 - w) + WORLDS[j](n) * w;
+  return im;
+}
+
+/* ---------- the sound ---------- */
+let ac = null, N = null, lastWave = -1;
+function noiseBuffer(sec) {
+  const b = ac.createBuffer(2, ac.sampleRate * sec, ac.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  return b;
+}
+function reverbIR(sec) {
+  const b = ac.createBuffer(2, ac.sampleRate * sec, ac.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = b.getChannelData(c);
+    for (let i = 0; i < d.length; i++) { const t = i / ac.sampleRate; d[i] = (Math.random() * 2 - 1) * Math.exp(-3.2 * t / sec) * (t < 0.02 ? t / 0.02 : 1); }
+  }
+  return b;
+}
+function build() {
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  const g = v => { const n = ac.createGain(); n.gain.value = v; return n; };
+  const n = {};
+  n.master = g(0); n.comp = ac.createDynamicsCompressor(); n.comp.threshold.value = -20; n.comp.ratio.value = 5;
+  n.comp.connect(n.master); n.master.connect(ac.destination);
+  n.mix = g(1);
+  n.oscA = ac.createOscillator(); n.oscB = ac.createOscillator(); n.sub = ac.createOscillator(); n.sub.type = "sine";
+  n.gA = g(0.30); n.gB = g(0.26); n.gSub = g(0);
+  n.oscA.connect(n.gA).connect(n.mix); n.oscB.connect(n.gB).connect(n.mix); n.sub.connect(n.gSub).connect(n.mix);
+  n.fm = g(0); n.oscA.connect(n.fm).connect(n.oscB.frequency);              /* cross-modulation: A bends B */
+  n.noise = ac.createBufferSource(); n.noise.buffer = noiseBuffer(3); n.noise.loop = true;
+  n.nbp = ac.createBiquadFilter(); n.nbp.type = "bandpass"; n.nbp.frequency.value = 900; n.nbp.Q.value = 0.7;
+  n.gNoise = g(0); n.noise.connect(n.nbp).connect(n.gNoise).connect(n.mix);
+  /* ring modulation: dry and multiplied, blended by the storm */
+  n.dry = g(1); n.vca = g(0); n.ringOsc = ac.createOscillator(); n.ringAmt = g(0);
+  n.ringOsc.connect(n.vca.gain); n.mix.connect(n.dry); n.mix.connect(n.vca); n.vca.connect(n.ringAmt);
+  n.filter = ac.createBiquadFilter(); n.filter.type = "lowpass";
+  n.dry.connect(n.filter); n.ringAmt.connect(n.filter);
+  n.out = g(1); n.filter.connect(n.out).connect(n.comp);
+  n.delay = ac.createDelay(2); n.delay.delayTime.value = 0.48; n.fb = g(0.3); n.dlp = ac.createBiquadFilter(); n.dlp.frequency.value = 2800;
+  n.gDelay = g(0); n.filter.connect(n.delay); n.delay.connect(n.dlp).connect(n.fb).connect(n.delay); n.dlp.connect(n.gDelay).connect(n.comp);
+  n.verb = ac.createConvolver(); n.verb.buffer = reverbIR(5.5); n.gVerb = g(0);
+  n.filter.connect(n.verb).connect(n.gVerb).connect(n.comp);
+  /* the planets' voices: after the filter (night does not mute them), into the delay and the reverb */
+  n.pbus = g(1); n.pbus.connect(n.comp); n.pbus.connect(n.delay); n.pbus.connect(n.verb);
+  n.jup = ac.createOscillator(); n.jup.type = "sawtooth"; n.jlp = ac.createBiquadFilter(); n.jlp.frequency.value = 420; n.jlp.Q.value = 2;
+  n.jgain = g(0); n.jup.connect(n.jlp).connect(n.jgain).connect(n.pbus);
+  for (const o of [n.oscA, n.oscB, n.sub, n.noise, n.ringOsc, n.jup]) o.start();
+  n.dA = 0; n.dB = 0;
+  N = n;
+  apply(true);
+}
+function f0() { return 440 * Math.pow(2, (12 * (S.oct + 1) + S.note - 69) / 12); }
+function apply(now) {
+  if (!N) return;
+  const t = ac.currentTime, k = now ? 0.05 : 1;
+  const set = (p, v, tc) => p.setTargetAtTime(v, t, tc * k);
+  const base = f0(), iv = interval(), ten = Math.max(0, tension());
+  /* moon: the character (oscillator spectra), the sub, the filter's resonance */
+  const q = Math.round(S.moon * 200);
+  if (q !== lastWave) {
+    lastWave = q;
+    const im = spectrum(S.moon), re = new Float32Array(NH + 1), w = ac.createPeriodicWave(re, im);
+    N.oscA.setPeriodicWave(w); N.oscB.setPeriodicWave(w);
+  }
+  const lit = illum(S.moon);
+  set(N.gSub.gain, 0.05 + 0.45 * lit, 3); set(N.filter.Q, 0.7 + 9 * Math.pow(lit, 2), 3);
+  /* pressure: the interval between the drones, and beating as tension grows */
+  set(N.oscA.frequency, base, 2); set(N.oscB.frequency, base * Math.pow(2, iv[1] / 12), 4); set(N.sub.frequency, base / 2, 2);
+  /* sun: the filter */
+  set(N.filter.frequency, cutoff(), 2);
+  /* clouds: reverb, delay, noise */
+  const c = S.clouds / 100;
+  set(N.gVerb.gain, 0.08 + 0.75 * c, 2); set(N.gDelay.gain, 0.04 + 0.32 * c, 2); set(N.fb.gain, 0.2 + 0.45 * c, 2);
+  set(N.gNoise.gain, 0.004 + 0.07 * c, 2); set(N.out.gain, 1 - 0.35 * c, 2);
+  /* kp: drift, and in a storm ring and cross-modulation */
+  const st = storm();
+  set(N.ringAmt.gain, 0.9 * st, 1.5); set(N.dry.gain, 1 - 0.6 * st, 1.5); set(N.ringOsc.frequency, base * 2.71 + 3, 1);
+  set(N.fm.gain, base * 1.8 * st * st, 1.5);
+  set(N.master.gain, S.vol * 0.5, 0.2);
+  N.beat = ten * 7;
+}
+function driftTick() {                                                      /* each drone's pitch wanders, more with Kp */
+  if (!N) return;
+  const dr = drift(), sp = 0.08 + 0.6 * dr, depth = 2 + 38 * Math.pow(dr, 1.4);
+  N.dA = clamp(N.dA + (Math.random() - 0.5) * sp, -1, 1) * 0.995;
+  N.dB = clamp(N.dB + (Math.random() - 0.5) * sp, -1, 1) * 0.995;
+  N.oscA.detune.setTargetAtTime(N.dA * depth, ac.currentTime, 0.3);
+  N.oscB.detune.setTargetAtTime(N.dB * depth + (N.beat || 0), ac.currentTime, 0.3);
+}
+
+/* ---------- the planets' voices: a structure over the drone, each planet's pulse from its orbit ----------
+ * The period of each pulse: 2.2 s times the square root of the orbit in years, so the five make slow polyrhythms
+ * (Mercury 1.1 s, Venus 1.7, Mars 3.0, Jupiter 7.6, Saturn 11.9). Their notes come from the drones' harmony. */
+const next = {}, step = {};
+const semi = s => Math.pow(2, s / 12);
+function pent() { return tension() > 0.5 ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 9]; }   /* minor under tension, else major */
+function env(gn, t, a, peak, dec) {
+  gn.gain.setValueAtTime(0, t); gn.gain.linearRampToValueAtTime(peak, t + a); gn.gain.setTargetAtTime(0, t + a, dec / 4);
+}
+function tone(type, f, t, a, peak, dec, dest) {
+  const o = ac.createOscillator(), gn = ac.createGain(); o.type = type; o.frequency.value = f;
+  o.connect(gn).connect(dest || N.pbus); env(gn, t, a, peak, dec); o.start(t); o.stop(t + a + dec * 1.6);
+  return o;
+}
+const VOICES = {
+  Mercury(t, k) {                                         /* GLINT: quick high sparks, up the chord */
+    const tones = [0, interval()[1], 12, 12 + interval()[1]], f = f0() * 8 * semi(tones[k % 4]);
+    tone("sine", f, t, 0.002, 0.05, 0.35); tone("sine", f * 2.01, t, 0.002, 0.02, 0.2);
+  },
+  Venus(t, k) {                                           /* BELLS: FM bells walking the pentatonic as a pentagram */
+    const p = pent(), fc = f0() * 4 * semi(p[(k * 2) % 5]);
+    const car = ac.createOscillator(), mod = ac.createOscillator(), mg = ac.createGain(), out = ac.createGain();
+    car.frequency.value = fc; mod.frequency.value = fc * 3.5;
+    mod.connect(mg).connect(car.frequency); car.connect(out).connect(N.pbus);
+    mg.gain.setValueAtTime(fc * 2.2, t); mg.gain.setTargetAtTime(0, t, 0.35);
+    env(out, t, 0.003, 0.08, 3.2); car.start(t); mod.start(t); car.stop(t + 6); mod.stop(t + 6);
+  },
+  Mars(t) {                                               /* PULSE: a low double beat, a heartbeat */
+    for (const [dt, v] of [[0, 0.32], [0.19, 0.2]]) {
+      const lp = ac.createBiquadFilter(); lp.frequency.value = 260; lp.connect(N.pbus);
+      tone("sawtooth", f0() / 2, t + dt, 0.004, v, 0.28, lp);
+    }
+  },
+  Jupiter(t, k, period) {                                 /* SWELL: a sub below the sub, breathing with its orbit */
+    N.jup.frequency.setTargetAtTime(f0() / 4, t, 0.5);
+    N.jgain.gain.setTargetAtTime(0.22, t, period * 0.18);
+    N.jgain.gain.setTargetAtTime(0.05, t + period * 0.45, period * 0.15);
+  },
+  Saturn(t) {                                             /* RINGS: an inharmonic chime with a long tail */
+    const f = f0() * 2 * semi(interval()[1]);
+    [[1, 1, 9], [2.76, 0.55, 6], [5.4, 0.35, 4], [8.93, 0.2, 2.5]].forEach(([r, a, d]) => tone("sine", f * r, t, 0.004, 0.06 * a, d));
+  }
+};
+function planetTick() {
+  if (!N || !N.on || !skyCache) return;
+  const t = ac.currentTime;
+  for (const [name, , , years] of PLANETS) {
+    const p = skyCache.planets.find(q => q.name === name);
+    const live = S.planets.has(name) && p && planetSeen(p), period = 2.2 * Math.sqrt(years);
+    if (!live) { next[name] = 0; if (name === "Jupiter") N.jgain.gain.setTargetAtTime(0, t, 1.5); continue; }
+    if (!next[name] || next[name] < t) next[name] = t + 0.05;
+    while (next[name] < t + 0.25) { step[name] = (step[name] || 0) + 1; VOICES[name](next[name], step[name], period); next[name] += period; }
+  }
+}
+function showPlanets() {
+  if (!skyCache) return;
+  const box = $("planets"), seen = [];
+  if (!box.children.length)
+    for (const [name, , voice] of PLANETS) {
+      const b = document.createElement("button"); b.type = "button"; b.dataset.p = name;
+      b.innerHTML = name.toUpperCase().slice(0, 3) + "<small>" + voice + "</small>";
+      b.onclick = () => { S.planets.has(name) ? S.planets.delete(name) : S.planets.add(name); touch(); showPlanets(); };
+      box.appendChild(b);
+    }
+  for (const b of box.children) {
+    const p = skyCache.planets.find(q => q.name === b.dataset.p), ok = p && planetSeen(p);
+    if (!ok) S.planets.delete(b.dataset.p);                 /* gone from the screen: its voice goes too */
+    else seen.push(b.dataset.p);
+    b.disabled = !ok; b.classList.toggle("on", S.planets.has(b.dataset.p));
+    b.setAttribute("aria-label", b.dataset.p + (ok ? ", on the screen" : ", not on the screen") + (S.planets.has(b.dataset.p) ? ", playing" : ""));
+  }
+  $("pnote").textContent = seen.length ? "On the screen now: " + seen.join(", ") + ". Each adds a voice with its own pulse."
+    : "No planet on the screen now. The sun, the clouds or the horizon hide them.";
+}
+
+/* ---------- random weather: each source at its own pace, sped up ---------- */
+const hist = [];
+function gauss() { return Math.sqrt(-2 * Math.log(Math.random() + 1e-9)) * Math.cos(2 * Math.PI * Math.random()); }
+function weatherTick(dtReal) {
+  const h = dtReal / 3600 * S.speed;                                        /* simulated hours */
+  S.press += -(S.press - 1013) / 60 * h + 2.2 * Math.sqrt(h) * gauss();
+  S.press = clamp(S.press, 965, 1045);
+  S.clouds = clamp(S.clouds - (S.clouds - 45) / 8 * h + 16 * Math.sqrt(h) * gauss(), 0, 100);
+  S.kp += -(S.kp - 1.7) / 7 * h + 0.5 * Math.sqrt(h) * gauss();
+  if (Math.random() < h / 250) S.kp = 5 + Math.random() * 3.5;             /* a storm, now and then */
+  S.kp = clamp(S.kp, 0, 9);
+  hist.push([performance.now(), S.press]);
+  const span = 3 * 3600 / S.speed * 1000;                                   /* the last three simulated hours */
+  while (hist.length > 2 && performance.now() - hist[0][0] > span) hist.shift();
+  const dp = S.press - hist[0][1];
+  S.trend = dp < -1 ? -1 : dp > 1 ? 1 : 0;
+}
+
+/* ---------- the screen ---------- */
+const FONT = {};
+for (const [ch, hex] of Object.entries(FONT16)) { const rows = []; for (let i = 0; i < 32; i += 2) rows.push(parseInt(hex.substr(i, 2), 16)); FONT[ch] = rows; }
+const cv = $("screen"), cx = cv.getContext("2d"), img = cx.createImageData(240, 240), px = new Uint8Array(240 * 240);
+let textAlpha = 0, showUntil = 0, skyCache = null, skyCacheT = 0;
+function touch() { showUntil = performance.now() + 2300; }
+function proj(alt, az) { const r = 170 * Math.tan((Math.PI / 2 - alt) / 2); return [120 - r * Math.sin(az), 120 - r * Math.cos(az)]; }
+function computeSky() {
+  const d = days(Date.now()), list = [];
+  for (const [ra, dec, mag] of STARS) { const p = altaz(ra, dec, d); if (p.alt > 0) list.push([...proj(p.alt, p.az), mag]); }
+  const m = moonEq(d), mp = altaz(m.ra, m.dec, d);
+  const planets = planetsNow(d).map(p => ({ ...p, xy: proj(p.alt, p.az) }));
+  return { stars: list, moon: mp.alt > 0 ? proj(mp.alt, mp.az) : null, planets };
+}
+/* what the sky lets through: the sun, the moon, the clouds (a magnitude limit) */
+function skyLimit() {
+  let limit = 4.6;
+  if (S.sun > -6) limit = -5; else if (S.sun > -12) limit = 1; else if (S.sun > -18) limit = 3;
+  if (skyCache && skyCache.moon) limit -= 0.8 * illum(S.moon);
+  return limit - S.clouds / 100 * 4;
+}
+/* a planet can be chosen only while it is drawn: up, inside the square (low ones fall off its sides), and the sky
+ * lets it through (bright ones show in twilight) */
+function planetSeen(p) {
+  const [x, y] = p.xy;
+  return p.alt > 0 && x >= 2 && y >= 2 && x < 238 && y < 238 && p.mag <= skyLimit() + (S.sun < 0 ? 2.5 : 0);
+}
+function put(x, y, v) { x |= 0; y |= 0; if (x >= 0 && y >= 0 && x < 240 && y < 240 && px[y * 240 + x] < v) px[y * 240 + x] = v; }
+function lines() {
+  const iv = interval(), c = S.clouds, arrow = S.trend < 0 ? "↓" : S.trend > 0 ? "↑" : "→";
+  const pad = (s, n) => (s + "").padStart(n), name = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"][S.note] + S.oct;
+  const fil = Math.round(clamp(Math.log(cutoff() / 160) / Math.log(7000 / 160), 0, 1) * 99);
+  return [
+    "COSMOS" + pad(name, 22),
+    "----------------------------",
+    "SUN    " + pad((S.sun >= 0 ? "+" : "") + Math.round(S.sun), 4) + "°    FILTER" + pad(fil, 4),
+    "CLOUDS  " + pad(Math.round(c), 3) + "%    REVERB" + pad(Math.round(8 + 0.75 * c), 4),
+    "PRESS " + pad(Math.round(S.press), 4) + " " + arrow + "    INTERVAL" + pad(iv[0], 4),
+    "KP       " + pad(S.kp.toFixed(1), 4) + "    DRIFT " + pad(Math.round(drift() * 99), 4),
+    "MOON    " + pad(Math.round(illum(S.moon) * 100), 3) + "%    SUB   " + pad(Math.round((0.05 + 0.45 * illum(S.moon)) * 198), 4),
+    "----------------------------",
+    S.planets.size ? ("PLANETS " + PLANETS.filter(p => S.planets.has(p[0])).map(p => p[1]).join(" ")).padEnd(28)
+                   : "SKY 100%" + (S.rand ? "     RANDOM ×" + S.speed : "          REAL SKY").padStart(20)
+  ];
+}
+function drawText(alpha) {
+  if (alpha <= 0.01) return;
+  const L = lines(), y0 = 120 - L.length * 8, mask = new Uint8Array(240 * 240), ink = new Uint8Array(240 * 240);
+  L.forEach((s, li) => {
+    [...s].forEach((ch, ci) => {
+      const g = FONT[ch]; if (!g) return;
+      for (let r = 0; r < 16; r++) for (let b = 0; b < 8; b++) if (g[r] >> (7 - b) & 1) {
+        const x = 8 + ci * 8 + b, y = y0 + li * 16 + r;
+        if (x < 240 && y < 240) { ink[y * 240 + x] = 1; for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) { const X = x + ox, Y = y + oy; if (X >= 0 && Y >= 0 && X < 240 && Y < 240) mask[Y * 240 + X] = 1; } }
+      }
+    });
+  });
+  for (let i = 0; i < px.length; i++) if (mask[i]) px[i] = px[i] * (1 - alpha) + (ink[i] ? 255 : 0) * alpha;
+}
+let lastFrame = 0;
+function frame(t) {
+  requestAnimationFrame(frame);
+  if (t - lastFrame < 66) return;
+  lastFrame = t;
+  if (!skyCache || t - skyCacheT > 20000) { skyCache = computeSky(); skyCacheT = t; }
+  px.fill(0);
+  const limit = skyLimit(), tw = 6 + 7 * S.kp;
+  for (const [x, y, mag] of skyCache.stars) {
+    if (mag > limit) continue;
+    put(x, y, clamp(200 - (mag + 1.5) * 26 + (Math.random() * 2 - 1) * tw, 40, 215));   /* stars twinkle */
+  }
+  for (const p of skyCache.planets) {                                       /* planets hold steady */
+    if (!planetSeen(p)) continue;
+    const [x, y] = p.xy, g = clamp(205 - (p.mag + 1.5) * 18, 120, 220), big = p.name === "Venus" || p.name === "Jupiter";
+    put(x, y, g); if (big) { put(x + 1, y, g); put(x, y + 1, g); put(x + 1, y + 1, g); }
+    if (p.name === "Saturn") { put(x - 1, y, g / 2); put(x + 1, y, g / 2); }
+    if (S.planets.has(p.name))                                              /* chosen: four corners around it */
+      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        const cxp = x + (sx > 0 ? 5 : -4), cyp = y + (sy > 0 ? 5 : -4);
+        put(cxp, cyp, 150); put(cxp - sx, cyp, 150); put(cxp, cyp - sy, 150);
+      }
+  }
+  if (skyCache.moon && S.sun < 8) {
+    const [mx, my] = skyCache.moon, k = illum(S.moon), waxing = S.moon < 0.5;
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+      if (dx * dx + dy * dy > 17) continue;
+      const edge = Math.sqrt(Math.max(0, 16 - dy * dy)) * (1 - 2 * k), lit = waxing ? dx > edge : -dx > edge;
+      put(mx + dx, my + dy, lit ? 210 : 45);
+    }
+  }
+  const target = performance.now() < showUntil ? 1 : 0;
+  textAlpha += (target - textAlpha) * (target ? 0.45 : 0.075);
+  drawText(textAlpha);
+  for (let i = 0; i < px.length; i++) { const v = px[i]; img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255; }
+  cx.putImageData(img, 0, 0);
+}
+
+/* ---------- the console ---------- */
+function show() {
+  $("sun").value = S.sun; $("clouds").value = S.clouds; $("press").value = S.press; $("kp").value = S.kp; $("moon").value = S.moon;
+  $("sunv").textContent = (S.sun >= 0 ? "+" : "") + S.sun.toFixed(0) + "°";
+  $("sund").textContent = "FILTER " + Math.round(cutoff()) + " HZ";
+  $("cloudsv").textContent = Math.round(S.clouds) + " %";
+  $("cloudsd").textContent = "REVERB " + Math.round(8 + 0.75 * S.clouds) + "%";
+  $("pressv").textContent = S.press.toFixed(1) + " hPa";
+  $("pressd").textContent = interval()[0];
+  $("kpv").textContent = S.kp.toFixed(2);
+  $("kpd").textContent = S.kp >= 5 ? "STORM" : "DRIFT " + Math.round(drift() * 99);
+  $("kprow").classList.toggle("storm", S.kp >= 5);
+  $("moonv").textContent = moonWorld(S.moon) + " · " + Math.round(illum(S.moon) * 100) + "% lit";
+  $("moond").textContent = "SUB " + Math.round((0.05 + 0.45 * illum(S.moon)) * 198);
+  for (const b of $("trend").children) b.classList.toggle("on", +b.dataset.t === S.trend);
+  $("real").classList.toggle("on", S.real); $("rand").classList.toggle("on", S.rand);
+  $("speed").hidden = !S.rand;
+  $("modenote").textContent = S.rand ? "Clouds, pressure and Kp drift by themselves, as COSMOS does offline, sped up so you can hear them move."
+    : S.real ? "Sun and moon follow the real sky over Rome. Move a slider to take it over." : "Everything is in your hands. REAL SKY gives sun and moon back to the sky.";
+}
+function syncReal() { if (!S.real) return; const r = realSky(Date.now()); S.sun = r.sun; S.moon = r.moon; }
+function changed() { touch(); show(); apply(false); }
+
+const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+NAMES.forEach((nm, i) => {
+  const b = document.createElement("button"); b.type = "button"; b.textContent = nm;
+  if (nm.includes("#")) b.classList.add("black");
+  b.setAttribute("aria-label", "Base note " + nm);
+  b.onclick = () => { S.note = i; for (const k of $("keys").children) k.classList.remove("on"); b.classList.add("on"); changed(); };
+  if (i === S.note) b.classList.add("on");
+  $("keys").appendChild(b);
+});
+$("octdn").onclick = () => { S.oct = Math.max(1, S.oct - 1); $("octv").textContent = S.oct; changed(); };
+$("octup").onclick = () => { S.oct = Math.min(4, S.oct + 1); $("octv").textContent = S.oct; changed(); };
+for (const id of ["sun", "clouds", "press", "kp", "moon"]) $(id).addEventListener("input", e => {
+  S[id] = +e.target.value;
+  if (id === "sun" || id === "moon") S.real = false;
+  if (id !== "sun" && id !== "moon") S.rand = false;
+  changed();
+});
+$("trend").onclick = e => { const b = e.target.closest("button"); if (!b) return; S.trend = +b.dataset.t; S.rand = false; changed(); };
+$("real").onclick = () => { S.real = !S.real; syncReal(); changed(); };
+$("rand").onclick = () => { S.rand = !S.rand; hist.length = 0; changed(); };
+$("speed").onclick = e => { const b = e.target.closest("button"); if (!b) return; S.speed = +b.dataset.s; for (const x of $("speed").children) x.classList.toggle("on", x === b); hist.length = 0; changed(); };
+$("vol").oninput = e => { S.vol = e.target.value / 100; apply(false); };
+cv.onclick = touch;
+$("play").onclick = async () => {
+  if (!ac) build();
+  if (ac.state === "running" && N.on) { await ac.suspend(); N.on = false; $("play").textContent = "START THE DRONE"; $("play").classList.remove("on"); return; }
+  await ac.resume(); N.on = true; apply(true); $("play").textContent = "STOP"; $("play").classList.add("on"); touch();
+};
+
+let lastTick = performance.now();
+setInterval(() => {
+  const now = performance.now(), dt = (now - lastTick) / 1000; lastTick = now;
+  if (S.rand) weatherTick(dt);
+  driftTick();
+  planetTick();
+  if (S.rand) { show(); apply(false); }
+}, 100);
+setInterval(showPlanets, 500);
+setInterval(() => { if (S.real) { syncReal(); show(); apply(false); } }, 10000);
+syncReal(); show(); touch();
+requestAnimationFrame(frame);
+</script>

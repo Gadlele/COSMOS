@@ -13,6 +13,9 @@ this week, a geomagnetic storm tears it apart now and then, the clouds and the s
 joins WiFi, fetches COSMOS's data and measures the memory left. See [docs/DESIGN.md](docs/DESIGN.md) for the plan,
 [docs/MEMORY.md](docs/MEMORY.md) for the memory budget and [docs/BUILDING.md](docs/BUILDING.md) to build it.
 
+`web/emulator/` is a sketch of COSMOS's sound in Web Audio, to try the mappings without an FM-1:
+`index.src.html` with the Terminus glyphs and the star catalog (`data.js`) put in its `/*DATA*/` makes `index.html`.
+
 ## Data
 
 - Weather: [Open-Meteo](https://open-meteo.com) (cloud cover, pressure)
