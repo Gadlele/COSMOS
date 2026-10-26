@@ -29,8 +29,8 @@ No presets, no scenes: the sound moves continuously, never jumps.
 
 ## Planets: notes, chords, engines and voices
 
-The seven classical planets, the Sun and the Moon among them, can be chosen (SELECT) while they are drawn on the
-screen; when one sets or the sky hides it, it goes. A planet brings four things:
+The seven classical planets, the Sun and the Moon among them, can be chosen (SELECT) while they are up (in EDIT,
+any of them); when one sets, it goes. A planet brings three things:
 
 - **Its note**: its period raised by octaves into hearing (Hans Cousto's cosmic octave): the Earth's year for the Sun,
   the synodic month for the Moon, each planet's orbit. TUNING COSMIC plays the exact frequency, EQUAL the nearest
@@ -41,24 +41,31 @@ screen; when one sets or the sky hides it, it goes. A planet brings four things:
   its partner the fifth; drone 2 the third, its partner coloured by the pressure (the octave when high and steady, the
   seventh as it falls, a suspended fourth and the ninth deep down).
 - **Its engine** for the drones, gliding in over two seconds.
-- **Its rhythmic voice**, pulsing with its period (2.2 s times the square root of the period in years), in the scale.
 
-| Planet | Note (cosmic) | Natural | Chords (degrees) | Engine | Voice | Pulse |
-| --- | --- | --- | --- | --- | --- | --- |
-| Sun | 126.22 Hz (B) | F | I V VI IV | radiant, open | FLARE: a soft bright chord flaring high | 2.2 s |
-| Moon | 210.42 Hz (G#) | C | I VI III IV | silver, singing | RIPPLE: tiny glassy drops wandering the scale | 0.6 s |
-| Mercury | 141.27 Hz (C#) | D | I II IV V | thin and bright | GLINT: quick high sparks up the chord | 1.1 s |
-| Venus | 221.23 Hz (A) | E | I IV VI V | sweet, glass | BELLS: FM bells walking the scale as a star | 1.7 s |
-| Mars | 144.72 Hz (D) | G | I VII VI V | raw, driven | PULSE: a low double beat, a heartbeat | 3.0 s |
-| Jupiter | 183.58 Hz (F#) | A | I IV II V | deep and warm | SWELL: a sub below the sub, breathing | 7.6 s |
-| Saturn | 147.85 Hz (D) | B | I III VII VI | metallic, ringed | RINGS: an inharmonic chime with a long tail | 11.9 s |
+| Planet | Note (cosmic) | Natural | Chords (degrees) | Engine |
+| --- | --- | --- | --- | --- |
+| Sun | 126.22 Hz (B) | F | I V VI IV | radiant, open |
+| Moon | 210.42 Hz (G#) | C | I VI III IV | silver, singing |
+| Mercury | 141.27 Hz (C#) | D | I II IV V | thin and bright |
+| Venus | 221.23 Hz (A) | E | I IV VI V | sweet, glass |
+| Mars | 144.72 Hz (D) | G | I VII VI V | raw, driven |
+| Jupiter | 183.58 Hz (F#) | A | I IV II V | deep and warm |
+| Saturn | 147.85 Hz (D) | B | I III VII VI | metallic, ringed |
+
+## The arpeggiator
+
+A line sweeps the square left to right in 16 s. Each star brighter than magnitude 3 it crosses plucks a note: its
+height a degree of the scale now (two octaves up from the root two octaves over the drones), its brightness the
+loudness, two at most at once. The planets it crosses pluck too, louder (the chosen one most). Clouds and daylight
+hide stars, so they thin the arpeggio out; a clear night is busy. On the ARP screen the line shows, and what plays
+lights up: a star flashes, a planet glows.
 
 ## Chords
 
 The drones always play a chord: drone 1 its root, its partner the fifth; drone 2 the third (a suspended fourth when
 the pressure is deep down), its partner coloured by the pressure (the octave high and steady, the seventh as it
-falls, the ninth deep down), in the sun's mode. With no planet the chord stands on the last key's note; with one,
-its four go round, one every 10 s, and a key plays the chord of the scale on its note for a while (held and 10 s
+falls, the ninth deep down), in the sun's mode. Four chords always go round, one every 10 s: with no planet on the
+last key's note, with one on the planet's; a key plays the chord of the scale on its note for a while (held and 10 s
 after). SEL in the settings' PRESS HARMONY leaves the pressure out: plain triads.
 
 ## Sources and what they do
@@ -101,9 +108,12 @@ For players who do not want to connect it:
 | --- | --- |
 | **HOME** | back to nature: the sun and the moon as they are, the weather as it comes (fetched over WiFi in stage 3; until then, or offline, drifting by itself) |
 | **EDIT** | everything by hand, the readings held on the screen: K1 the sun's height, K2 the clouds, K3 the pressure, K4 Kp, ALGO the moon's cycle, PRESET the pressure's trend |
-| **SEL** | the next planet on the screen (the seven classical ones), or none |
+| **SEL** | the next planet up (in EDIT any of the seven classical ones), or none |
+| **LFO** | the sky alone (a touch brings the readings back for two seconds), and back |
+| **ARP** | the ARP screen: the sky, the arpeggiator on, its line, what it plays lighting up; again: off, and back |
 | **GLO** | the settings: latitude, longitude, UTC offset, summer time, date, time (local), the pressure in the harmony, the tuning (COSMIC, EQUAL or NATURAL) |
-| **PLAY** | the sky stopped or playing; stopped, a key still sounds its chord, held and for 10 s after |
+| **PLAY** | the sky stopped or playing; stopped, a key still sounds its chord, held and for 10 s after. Stopping saves |
+| **Lights** | the buttons that do something glow, the ones in use bright; the keys of the scale glow, the root's bright |
 | **OCT− / OCT+** | the octave |
 | **Keys** | the chord on the key's note: with no planet the new root; with one, the chord of its scale on the nearest degree, held and for 10 s after |
 | **MASTER** | the volume |
@@ -127,8 +137,10 @@ SKY 100%         UPD 12 MIN
 
 - Left: the reading from the world. Right: what it is doing to the sound.
 - PRESS shows the trend: ↑ rising, ↓ falling, → steady. INTERVAL uses interval names (P5, P8, m3...).
-- The text fades in (0.3 s) when a key or knob is touched, holds (2 s after the last touch), then fades out
-  (1.5 s) and leaves the sky on the whole screen. See `docs/img/rome-2026-11-09-fade.gif`.
+- The readings stay. On the sky alone (LFO, ARP) they fade in (0.3 s) on a touch, hold (2 s after the last touch),
+  then fade out (1.5 s). See `docs/img/rome-2026-11-09-fade.gif`.
+- Saving to flash silences the sound for a moment, so COSMOS saves only when PLAY stops it and when the settings
+  close.
 
 ### Splash
 

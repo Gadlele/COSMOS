@@ -4,15 +4,20 @@
  *
  * THE SKY (the main screen): the sun, the moon, the planets and the stars where they are above the chosen place now,
  * on the whole square. The sun, the moon and the clouds decide what shows (a full moon or a daylight sky hides the
- * faint stars); Kp makes the stars twinkle. Touch anything and the readings fade in over the sky in white Terminus,
- * hold, and fade out after two seconds.
+ * faint stars); Kp makes the stars twinkle. The readings stay over it in white Terminus; LFO leaves the sky alone
+ * (a touch brings the readings back for two seconds), ARP the sky with the arpeggiator's line.
+ * THE ARPEGGIATOR: a line sweeps the square in 16 s; the bright stars it crosses pluck a note of the scale by their
+ * height, louder the brighter; the planets it crosses too, louder still. On the ARP screen what plays lights up.
  * THE BUTTONS
  *   HOME   back to nature: the sun and the moon as they are, the weather as it comes (fetched with WiFi, stage 3;
  *          until then drifting by itself)
  *   EDIT   everything by hand, the readings held on the screen: K1 the sun's height, K2 the clouds, K3 the pressure,
  *          K4 Kp, ALGO the moon's cycle, PRESET the pressure's trend
- *   SEL    the next planet on the screen (the seven classical ones, the Sun and the Moon among them), or none
- *   GLO    the settings      PLAY the sky stopped or playing      OCT- / OCT+ the octave      MASTER the volume
+ *   SEL    the next planet up (in EDIT any of the seven classical ones, the Sun and the Moon among them), or none
+ *   LFO    the sky alone, and back      ARP the ARP screen, the arpeggio on; again, off and back
+ *   GLO    the settings      PLAY the sky stopped or playing (stopping saves)      OCT- / OCT+ the octave
+ *   MASTER the volume. The buttons that do something glow, the ones in use bright; the keys glow on the scale,
+ *   bright on its root. Saving silences the sound for a moment: only stopping (PLAY) and leaving GLO save.
  * THE HARMONY. The drones always play a chord: drone 1 its root, its partner the fifth, drone 2 the third (a fourth,
  * suspended, when the pressure is deep down), its partner coloured by the pressure (the octave high and steady, the
  * seventh as it falls, the ninth deep down), in the mode the sun's height gives (Phrygian at night .. Lydian at
@@ -39,7 +44,7 @@ extern const uint32_t shim_heap_size;
 #define C_STORM RGB(255, 179, 138)
 #define FIRST_KEY_NOTE 53                /* key 0 is F3 */
 #define DEFAULT_UNIX 1793037600u         /* 2026-10-26 18:00 UTC: until a time is set */
-#define SET_MAGIC 0x434F5333u            /* "COS3" */
+#define SET_MAGIC 0x434F5334u            /* "COS4" */
 #define FADE_HOLD_MS 2300u
 #define CHORD_MS 10000u                  /* a chord every 10 s */
 #define KEY_HOLD_MS 10000u               /* a key's note stays 10 s after it is let go */
@@ -53,7 +58,8 @@ static struct {                          /* kept in the store (OBJ_SETTINGS) */
     uint8_t summer, manual, linked;      /* summer time; EDIT (else HOME: nature); the pressure in the harmony */
     uint8_t octave, tuning;              /* tuning 0 COSMIC, 1 EQUAL, 2 NATURAL */
     uint8_t pc[2];                       /* with no planet, the chord's root: a pitch class ([1] unused) */
-    int8_t trend, pad[3];
+    int8_t trend;
+    uint8_t arp, pad[2];                 /* the arpeggiator on */
     float clouds, press, kp, sun, moon;  /* the sky by hand (EDIT) */
 } set;
 
@@ -61,7 +67,11 @@ static sky_t sky = {.sun = 20.0f, .clouds = 30.0f, .press = 1015.0f, .trend = 0,
                     .hz = {110.0f, 164.81f}, .linked = 1, .planet = PL_NONE, .on = 1};
 static sky_now_t now_sky;                /* the last astro_now */
 static uint8_t star_x[NSTARS], star_y[NSTARS];   /* the stars on the screen (y 255: not up, or off the square) */
-static int16_t pl_x[PL_N], pl_y[PL_N];   /* each planet on the screen, by PL_* (x -1: not seen) */
+static int16_t pl_x[PL_N], pl_y[PL_N];   /* each planet on the square, by PL_* (x -1: below the horizon or off it) */
+static uint8_t pl_drawn[PL_N];           /* bright enough to show through the sky now */
+static uint8_t pl_up[PL_N];              /* can be chosen from nature: up, on the square, the sky dark enough for it */
+static uint8_t star_flash[NSTARS];       /* a star the arpeggiator just played: frames it stays bright */
+static uint8_t pl_flash[PL_N];           /* a planet it just played: frames its glow lasts */
 static float limit;                      /* the faintest magnitude the sky lets through now */
 static volatile int panic;
 static int eng_ok;
@@ -84,6 +94,9 @@ static struct {
     int32_t mode;                        /* the scale's mode, 0 Phrygian .. 5 Lydian */
     int32_t key_deg;                     /* a key's chord: its scale degree */
     uint32_t key_until;                  /* until when (plat_ms); a held key keeps pushing it on */
+    int view_sky;                        /* LFO: the sky alone, the readings only on a touch */
+    uint32_t lit[4];                     /* the lights last set: bright and dim buttons, bright and dim keys */
+    uint32_t sweep_x;                    /* the arpeggiator's line, the last column it reached */
 } ui = {.rnd = 0x2545F491u};
 
 static uint32_t unix_now(void) { return ui.clock_unix + (plat_ms() - ui.clock_ms) / 1000u; }
@@ -127,9 +140,9 @@ static const int8_t MODES[6][7] = {
     {0, 2, 4, 6, 7, 9, 11},              /* Lydian: a high sun */
 };
 static const char *const MODE_NAME[6] = {"PHR", "AEO", "DOR", "MIX", "ION", "LYD"};
-/* each planet's four chords: scale degrees, 0 the root */
+/* each planet's four chords, and with none (the first): scale degrees, 0 the root */
 static const int8_t PROG[PL_N][4] = {
-    {0, 0, 0, 0}, {0, 4, 5, 3}, {0, 5, 2, 3}, {0, 1, 3, 4}, {0, 3, 5, 4}, {0, 6, 5, 4}, {0, 3, 1, 4}, {0, 2, 6, 5}};
+    {0, 5, 3, 4}, {0, 4, 5, 3}, {0, 5, 2, 3}, {0, 1, 3, 4}, {0, 3, 5, 4}, {0, 6, 5, 4}, {0, 3, 1, 4}, {0, 2, 6, 5}};
 static const char *const ROMAN[7] = {"I", "II", "III", "IV", "V", "VI", "VII"};
 
 static int32_t mode_of_sun(float h)
@@ -184,13 +197,9 @@ static void harmony(void)
     int32_t p = sky.planet, i, a, b, top, d = 0;
     float root, t = sky.linked ? tension(&sky) : -1.0f;
     ui.mode = mode_of_sun(sky.sun);
-    if (p == PL_NONE) {
-        root = 440.0f * fm_exp2f((float)(12 * (set.octave + 1) + set.pc[0] - 69) / 12.0f);
-    } else {
-        root = root_hz(p);
-        ui.chord = (int32_t)((now - ui.chords_t0) / CHORD_MS % 4u);
-        d = now < ui.key_until ? ui.key_deg : PROG[p][ui.chord];
-    }
+    root = p == PL_NONE ? 440.0f * fm_exp2f((float)(12 * (set.octave + 1) + set.pc[0] - 69) / 12.0f) : root_hz(p);
+    ui.chord = (int32_t)((now - ui.chords_t0) / CHORD_MS % 4u);   /* with a planet or not, the four go round */
+    d = now < ui.key_until && p != PL_NONE ? ui.key_deg : PROG[p][ui.chord];
     a = d;
     b = t >= 1.3f ? d + 3 : d + 2;       /* deep low pressure: a suspension */
     /* drone 2's partner: the octave of the root high and steady, the seventh as it falls, the ninth deep down */
@@ -215,6 +224,7 @@ static void defaults(void)
     set.utc4 = 4;
     set.summer = 0;
     set.manual = 0;
+    set.arp = 1;
     set.linked = 1;
     set.octave = 2;
     set.tuning = 0;
@@ -299,14 +309,18 @@ void app_splash(void)
 }
 
 /* ------------------------------------------------------------------ the sky --- */
-static void place(altaz_t p, int32_t pl, float mag, int edge)
+/* a body on the square: drawn if the sky lets it through; chosen from nature if up and the sky dark enough for it
+ * (the clouds hide it from the eye, not from the choice) */
+static void place(altaz_t p, int32_t pl, float mag, int edge, float dark_below)
 {
     int32_t x, y;
     pl_x[pl] = -1;
-    if (mag <= limit + (sky.sun < 0.0f ? 2.5f : 0.0f) && astro_project(p, &x, &y) && x >= edge && y >= edge
-        && x < 240 - edge && y < 240 - edge) {
+    pl_drawn[pl] = pl_up[pl] = 0;
+    if (astro_project(p, &x, &y) && x >= edge && y >= edge && x < 240 - edge && y < 240 - edge) {
         pl_x[pl] = (int16_t)x;
         pl_y[pl] = (int16_t)y;
+        pl_drawn[pl] = mag <= limit + (sky.sun < 0.0f ? 2.5f : 0.0f);
+        pl_up[pl] = now_sky.sun_alt < dark_below;
     }
 }
 
@@ -330,7 +344,7 @@ static void sky_update(void)
         limit = 3.0f;
     if (now_sky.moon_pos.alt > 0.0f)
         limit -= 0.8f * (1.0f - fm_cosf(FM_TWO_PI * sky.moon)) * 0.5f;
-    limit -= sky.clouds / 100.0f * 4.0f;
+    limit -= sky.clouds / 100.0f * 2.5f;   /* clouds dim the sky; the brightest still show */
     for (i = 0; i < (int32_t)NSTARS; i++) {
         altaz_t p = astro_altaz((float)STARS[i].ra * (FM_TWO_PI / 65536.0f), (float)STARS[i].dec * 0.000174532925f,
                                 now_sky.lst, lat * 0.0174532925f);
@@ -341,13 +355,14 @@ static void sky_update(void)
             star_y[i] = 255;
         }
     }
-    /* each body is seen while it is drawn: up, on the square, bright enough; the Sun whenever it is up */
+    /* the planets from nightfall (Venus and Jupiter in the twilight already), the Moon and the Sun whenever up */
     for (i = 0; i < 5; i++)
-        place(now_sky.planet[i], PL_MERCURY + i, now_sky.planet_mag[i], 2);
-    place(now_sky.sun_pos, PL_SUN, -26.0f, 6);
-    place(now_sky.moon_pos, PL_MOON, sky.sun < 8.0f ? -12.0f : 99.0f, 5);
-    /* a chosen planet that leaves the screen takes its engine, its voice and its chords along */
-    if (sky.planet != PL_NONE && pl_x[sky.planet] < 0) {
+        place(now_sky.planet[i], PL_MERCURY + i, now_sky.planet_mag[i], 2,
+              PL_MERCURY + i == PL_VENUS || PL_MERCURY + i == PL_JUPITER ? -2.0f : -5.0f);
+    place(now_sky.sun_pos, PL_SUN, -26.0f, 6, 90.0f);
+    place(now_sky.moon_pos, PL_MOON, sky.sun < 8.0f ? -12.0f : 99.0f, 5, 90.0f);
+    /* from nature, a chosen planet that sets takes its engine and its chords along (EDIT keeps it) */
+    if (!set.manual && sky.planet != PL_NONE && !pl_up[sky.planet]) {
         app_say(planet_name(sky.planet), "GONE");
         sky.planet = PL_NONE;
     }
@@ -536,7 +551,7 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
     } else {
         int seen = 0;
         for (i = 1; i < PL_N; i++)
-            seen += pl_x[i] >= 0;
+            seen += pl_up[i];
         put(put_int(v, seen), seen == 1 ? " PLANET IN SIGHT" : " PLANETS IN SIGHT");
         copy(lines[8], seen ? v : "NO PLANET IN SIGHT", 32);
         col[8] = C_MID;
@@ -581,25 +596,40 @@ static void sky_frame(void)
 {
     char lines[NLINES][32];
     uint16_t col[NLINES];
-    int32_t s, i, j, tw = (int32_t)(6.0f + 7.0f * sky.kp);
+    int32_t s, i, j, tw = (int32_t)(6.0f + 7.0f * sky.kp), arp_view = ui.view_sky && set.arp;
     if (ui.alpha > 0.01f)
         readings(lines, col);
     for (s = 0; s < 5; s++) {
         int32_t y0 = s * 48;
         cv_begin(240, 48, C_BLACK);
-        for (i = 0; i < (int32_t)NSTARS; i++) {   /* the stars twinkle, more with Kp */
+        if (arp_view && sky.on)          /* the ARP screen: the arpeggiator's line, faint, under the stars */
+            for (i = 0; i < 48; i++)
+                cv_pset((int32_t)ui.sweep_x, i, grey(28));
+        for (i = 0; i < (int32_t)NSTARS; i++) {   /* the stars twinkle, more with Kp; one just played flashes */
             int32_t y = star_y[i], g;
             if (y == 255 || y < y0 || y >= y0 + 48)
                 continue;
+            if (star_flash[i] && arp_view) {
+                cv_pset(star_x[i], y - y0, C_WHITE);
+                cv_pset(star_x[i] - 1, y - y0, grey(120));
+                cv_pset(star_x[i] + 1, y - y0, grey(120));
+                cv_pset(star_x[i], y - 1 - y0, grey(120));
+                cv_pset(star_x[i], y + 1 - y0, grey(120));
+                continue;
+            }
             g = 161 - (int32_t)((float)STARS[i].mag10 * 2.6f) + (int32_t)(rnd() % (uint32_t)(2 * tw + 1)) - tw;
             cv_pset(star_x[i], y - y0, grey(g < 40 ? 40 : g > 215 ? 215 : g));
         }
+        if (arp_view)                    /* the ARP screen: a planet just played glows, fading */
+            for (i = PL_SUN; i < PL_N; i++)
+                if (pl_flash[i] && pl_x[i] >= 0 && pl_y[i] >= y0 - 12 && pl_y[i] < y0 + 60)
+                    disc(pl_x[i], pl_y[i], i == PL_SUN ? 10 : i == PL_MOON ? 7 : 4, grey(30 + 10 * pl_flash[i]), y0);
         for (i = PL_MERCURY; i <= PL_SATURN; i++) {   /* the planets hold steady */
             int32_t x = pl_x[i], y = pl_y[i], g = 205 - (int32_t)((now_sky.planet_mag[i - PL_MERCURY] + 1.5f) * 18.0f);
             uint16_t c;
-            if (x < 0 || y < y0 - 8 || y >= y0 + 56)
+            if (x < 0 || !pl_drawn[i] || y < y0 - 8 || y >= y0 + 56)
                 continue;
-            c = grey(g < 120 ? 120 : g > 220 ? 220 : g);
+            c = pl_flash[i] && arp_view ? C_WHITE : grey(g < 120 ? 120 : g > 220 ? 220 : g);
             cv_pset(x, y - y0, c);
             if (i == PL_VENUS || i == PL_JUPITER) {   /* 2 x 2 */
                 cv_pset(x + 1, y - y0, c);
@@ -611,7 +641,7 @@ static void sky_frame(void)
                 cv_pset(x + 1, y - y0, grey(g / 2));
             }
         }
-        if (pl_x[PL_MOON] >= 0 && pl_y[PL_MOON] >= y0 - 5 && pl_y[PL_MOON] < y0 + 53) {   /* the moon in its phase */
+        if (pl_x[PL_MOON] >= 0 && pl_drawn[PL_MOON] && pl_y[PL_MOON] >= y0 - 5 && pl_y[PL_MOON] < y0 + 53) {   /* the moon in its phase */
             float k = (1.0f - fm_cosf(FM_TWO_PI * sky.moon)) * 0.5f;   /* its phase: nature's, or EDIT's */
             int waxing = sky.moon - fm_floorf(sky.moon) < 0.5f, dx, dy;
             for (dy = -4; dy <= 4; dy++)
@@ -785,6 +815,91 @@ static void settings_change(int32_t step, int big)
     ui.last_sky = 0;                     /* the sky again, at once */
 }
 
+/* ------------------------------------------------------------ the arpeggiator --- */
+/* a line sweeps the square left to right in 16 s; each star brighter than magnitude 3 it crosses plays a pluck: its
+ * height a degree of the scale now (two octaves, the root two octaves over the drones' at the bottom), its brightness
+ * its loudness. Clouds and daylight hide stars, and so thin the notes out */
+#define SWEEP_MS 16000u
+#define ARP_MAG10 30
+static void arp_tick(void)
+{
+    uint32_t now = plat_ms(), x = now % SWEEP_MS * 240u / SWEEP_MS, from = ui.sweep_x;
+    int32_t i, best[2] = {-1, -1};
+    ui.sweep_x = x;
+    if (!set.arp || !sky.on || x == from)
+        return;
+    for (i = 0; i < (int32_t)NSTARS; i++) {   /* the two brightest it crossed since the last frame */
+        uint32_t sx = star_x[i];
+        int crossed = from < x ? sx > from && sx <= x : sx > from || sx <= x;
+        if (star_y[i] == 255 || STARS[i].mag10 > ARP_MAG10 || !crossed)
+            continue;
+        if (best[0] < 0 || STARS[i].mag10 < STARS[best[0]].mag10) {
+            best[1] = best[0];
+            best[0] = i;
+        } else if (best[1] < 0 || STARS[i].mag10 < STARS[best[1]].mag10) {
+            best[1] = i;
+        }
+    }
+    for (i = PL_SUN; i < PL_N; i++) {    /* a planet it crosses plays too, louder: the sun only when up */
+        int32_t px = pl_x[i], deg;
+        int crossed;
+        if (px < 0 || (i != PL_SUN && !pl_drawn[i]))
+            continue;
+        crossed = from < x ? (uint32_t)px > from && (uint32_t)px <= x : (uint32_t)px > from || (uint32_t)px <= x;
+        if (!crossed)
+            continue;
+        deg = (239 - pl_y[i]) * 15 / 240;
+        eng_note(sky.root_hz * 4.0f * ratio(semis(deg)), i == sky.planet ? 0.28f : 0.22f);
+        pl_flash[i] = 16;
+    }
+    for (i = 0; i < 2; i++)
+        if (best[i] >= 0) {
+            int32_t st = best[i], deg = (239 - star_y[st]) * 15 / 240;
+            float amp = 0.08f + (float)(ARP_MAG10 - STARS[st].mag10) * 0.003f;
+            eng_note(sky.root_hz * 4.0f * ratio(semis(deg)), amp);
+            star_flash[st] = 5;
+        }
+}
+
+/* the lights: the buttons that do something glow, the ones in use are bright; the keys of the scale glow, the root's
+ * are bright. Set only when they change */
+static void lights(void)
+{
+    uint32_t bb = 0, db, bk = 0, dk = 0, k;
+    int32_t root_pc = ((int32_t)(69.0f + 12.0f * fm_log2f(sky.root_hz / 440.0f) + 0.5f) % 12 + 12) % 12;
+    if (ui.screen == 1) {
+        db = 1u << B_GLO | 1u << B_HOME;
+        bb = 1u << B_GLO;
+    } else {
+        db = 1u << B_HOME | 1u << B_EDIT | 1u << B_SEL | 1u << B_GLO | 1u << B_LFO | 1u << B_ARP | 1u << B_PLAY
+             | 1u << B_OCTDN | 1u << B_OCTUP;
+        bb |= set.manual ? 1u << B_EDIT : 1u << B_HOME;
+        if (ui.view_sky)
+            bb |= 1u << B_LFO;
+        if (set.arp)
+            bb |= 1u << B_ARP;
+        if (sky.planet != PL_NONE)
+            bb |= 1u << B_SEL;
+        if (sky.on)
+            bb |= LED_PLAY_GREEN;        /* playing: green; stopped: PLAY glows red */
+        for (k = 0; k < NKEYS; k++) {
+            int32_t rel = (((int32_t)FIRST_KEY_NOTE + (int32_t)k - root_pc) % 12 + 12) % 12, d;
+            for (d = 0; d < 7; d++)
+                if (MODES[ui.mode][d] == rel)
+                    dk |= 1u << k;
+            if (rel == 0)
+                bk |= 1u << k;
+        }
+    }
+    if (bb != ui.lit[0] || db != ui.lit[1] || bk != ui.lit[2] || dk != ui.lit[3]) {
+        plat_lights(bb, bk, db, dk, 1);
+        ui.lit[0] = bb;
+        ui.lit[1] = db;
+        ui.lit[2] = bk;
+        ui.lit[3] = dk;
+    }
+}
+
 /* ------------------------------------------------------------------- input --- */
 static void to_screen(int sc)
 {
@@ -808,9 +923,10 @@ static void input(void)
         to_screen(!ui.screen);
         return;
     }
-    if (down >> B_HOME & 1u) {           /* back to nature */
+    if (down >> B_HOME & 1u) {           /* back to nature, the readings */
         to_screen(0);
         set.manual = 0;
+        ui.view_sky = 0;
         ui.dirty = 1;
         ui.last_sky = 0;
         app_say("HOME", "NATURE");
@@ -819,8 +935,14 @@ static void input(void)
     if (down >> B_EDIT & 1u) {           /* everything by hand, from where nature left it */
         to_screen(0);
         set.manual = 1;
+        ui.view_sky = 0;
         ui.dirty = 1;
         app_say("EDIT", "BY HAND");
+        return;
+    }
+    if (down >> B_LFO & 1u && ui.screen == 0) {   /* the sky alone, and back to the readings */
+        ui.view_sky = !ui.view_sky;
+        ui.touched = ui.view_sky ? 0u : now;
         return;
     }
     if (ui.screen == 1) {
@@ -849,11 +971,11 @@ static void input(void)
     } else if (e1 || e2 || e3 || e4 || ea || ep) {
         app_say("NATURE", "EDIT TO CHANGE");
     }
-    if (down >> B_SEL & 1u || es) {      /* the next planet on the screen, or none */
+    if (down >> B_SEL & 1u || es) {      /* the next planet up (in EDIT any of the seven), or none */
         int32_t p = sky.planet, n, dir = es < 0 ? -1 : 1;
         for (n = 0; n < PL_N; n++) {
             p = ((p + dir) % PL_N + PL_N) % PL_N;
-            if (p == PL_NONE || pl_x[p] >= 0)
+            if (p == PL_NONE || set.manual || pl_up[p])
                 break;
         }
         if (p != sky.planet) {
@@ -865,8 +987,23 @@ static void input(void)
     }
     if (down >> B_OCTDN & 1u && set.octave > 1) { set.octave--; ui.dirty = 1; }
     if (down >> B_OCTUP & 1u && set.octave < 4) { set.octave++; ui.dirty = 1; }
-    if (down >> B_PLAY & 1u)
+    if (down >> B_ARP & 1u && ui.screen == 0) {   /* the ARP screen: the sky, the line, what it plays lighting up */
+        if (!set.arp || !ui.view_sky) {
+            set.arp = 1;
+            ui.view_sky = 1;
+            ui.touched = 0;
+        } else {                         /* on it already: the arpeggio off, back to the readings */
+            set.arp = 0;
+            ui.view_sky = 0;
+            ui.touched = now;
+        }
+        ui.dirty = 1;
+    }
+    if (down >> B_PLAY & 1u) {
         sky.on = !sky.on;
+        if (!sky.on)                     /* stopped: a quiet moment to save (saving silences the sound) */
+            save();
+    }
     for (k = 0; k < NKEYS; k++)
         if (keys >> k & 1u) {            /* a key's chord: held, and 10 s after */
             if (sky.planet == PL_NONE) {
@@ -905,12 +1042,10 @@ void app_frame(void)
     sky.drone_on[0] = sky.on || now < ui.key_until;   /* stopped, a key still plays */
     sky.drone_on[1] = sky.on || now < ui.key_until;
     eng_sky(&sky);
-    if (ui.dirty && ui.screen == 0 && now - ui.touched > 10000u)   /* settings: saved once the hands are off */
-        save();
-    if (now - ui.last_save > 30u * 60u * 1000u)   /* and the clock, every half hour */
-        save();
-    {   /* the readings: in fast after a touch, held, then out slowly */
-        float to = set.manual || now - ui.touched < FADE_HOLD_MS ? 1.0f : 0.0f;   /* EDIT: held */
+    arp_tick();
+    lights();
+    {   /* the readings: always, but in the sky alone (LFO): there in fast after a touch, held, out slowly */
+        float to = !ui.view_sky || now - ui.touched < FADE_HOLD_MS ? 1.0f : 0.0f;
         ui.alpha += (to - ui.alpha) * (to > ui.alpha ? 0.5f : 0.09f);
         if (ui.alpha < 0.01f && to == 0.0f)
             ui.alpha = 0.0f;
@@ -922,6 +1057,15 @@ void app_frame(void)
         sky_frame();
     else
         settings_frame();
+    {
+        uint32_t i;
+        for (i = 0; i < NSTARS; i++)     /* the played stars fade back */
+            if (star_flash[i])
+                star_flash[i]--;
+        for (i = 0; i < PL_N; i++)
+            if (pl_flash[i])
+                pl_flash[i]--;
+    }
 }
 
 #ifdef PLAT_HOST
