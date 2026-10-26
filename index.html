@@ -115,16 +115,18 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
       <h2>Where it stands</h2>
       <p class="date">2026-10-26</p>
       <ul>
-        <li><b>COSMOS 0.3, the first stage</b>: the engine on the FM-1's chip, with the sky in your hands. Each drone is a small instrument on its own note (the keyboard is split: left half drone 1, right half drone 2), a partner above it that beats against it, a sub, pink noise, driven into its own resonant filter, breathing. A planet changes the engine and adds its voice: Venus sweet with bells, Jupiter deep with a swell, Saturn metallic with a chime, Mars raw with a heartbeat, Mercury bright with sparks. A tape-like delay, a long reverb, a battery gauge. No WiFi and no stars yet. <a href="install/">Install it</a>.</li>
+        <li><b>COSMOS 0.4, the sky</b>: the sun, the moon, five planets and the 500 brightest stars computed on the FM-1 for your city, date and time; the screen is that sky, and the readings fade in over it when you touch a control. The sun opens the filter and the moon sets the character by themselves; a planet can be chosen only while it is on the screen. The weather is on the knobs or drifts by itself. <a href="install/">Install it</a>.</li>
+        <li><b>COSMOS 0.3, the engine</b>: each drone a small instrument on its own note, a partner that beats against it, its own driven filter, breathing; a planet changes the engine and adds its voice; a tape-like delay, a long reverb, a battery gauge.</li>
         <li><b>COSMOS PROBE 0.2</b>, a test firmware (<a href="probe/install/">install it</a>): it joins your WiFi, fetches the cloud cover and the pressure (Open-Meteo) and the Kp index (NOAA) over HTTPS, and shows how much memory WiFi leaves for COSMOS's delay and reverb. It makes no sound. First run on an FM-1: connected at −85 dBm, both sources in 386 ms, and room for a 1-second stereo delay beside the reverb. 0.2 keeps the password's big character in lower case when it is.</li>
         <li><b>The sound, in your browser</b>: COSMOS's engine sketched in Web Audio, with the five sources on sliders, random weather, the real sky over Rome and the planets' voices. <a href="try/">Try it</a>.</li>
-        <li><b>Next</b>: the sky computed on the FM-1 (sun, moon, stars, planets) and drawn behind the readings; then the weather and the Kp every half hour, and the random weather offline.</li>
+        <li><b>Next</b>: the weather and the Kp over WiFi every half hour, and the time with them; then the splash.</li>
       </ul>
     </div>
     <aside class="versions">
       <h3>Versions</h3>
       <ul>
-        <li><a href="firmware/cosmos-0.3.fwsc"><b>COSMOS 0.3</b></a><span>2026-10-26</span> <em>stage 1</em></li>
+        <li><a href="firmware/cosmos-0.4.fwsc"><b>COSMOS 0.4</b></a><span>2026-10-26</span> <em>the sky</em></li>
+        <li><b>COSMOS 0.3</b><span>2026-10-26</span></li>
         <li><b>COSMOS 0.2</b><span>2026-10-26</span></li>
         <li><b>COSMOS 0.1</b><span>2026-10-26</span></li>
         <li><a href="probe/firmware/probe-0.2.fwsc"><b>PROBE 0.2</b></a><span>2026-10-26</span></li>
@@ -156,10 +158,9 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
     <p class="sub">White Terminus text on black, over the stars, the moon and the planets where they are above you now. Touch a control and the readings fade in; leave it and they fade back to the sky.</p>
     <div class="gallery">
       <figure><img src="img/fade.gif" alt="The readings fading in on a touch and out to the stars" loading="lazy"><figcaption><b>A touch</b>: the readings fade in, then back to the stars.</figcaption></figure>
-      <figure><img src="img/full-moon.png" alt="The screen with the readings, under a full moon" loading="lazy"><figcaption><b>Full moon</b> over Rome, 26 October, 22:00: its glow hides the faint stars.</figcaption></figure>
-      <figure><img src="img/new-moon.png" alt="The screen with the readings, under a new moon" loading="lazy"><figcaption><b>New moon</b>, 9 November, 21:00: more stars come out.</figcaption></figure>
-      <figure><img src="img/sky-only.png" alt="The screen with the sky alone" loading="lazy"><figcaption><b>The sky alone</b>, once the readings have faded.</figcaption></figure>
-      <figure><img src="img/cosmos-stage1.png" alt="COSMOS 0.1's screen: the sources and what they do to the sound" loading="lazy"><figcaption><b>COSMOS 0.3</b>: Venus chosen, its bells over two drones a third apart.</figcaption></figure>
+      <figure><img src="img/cosmos-readings.png" alt="COSMOS 0.4: the readings over the sky of Rome" loading="lazy"><figcaption><b>COSMOS 0.4</b>: the readings over the sky of Rome, 26 October, 19:00, the full moon rising on the left.</figcaption></figure>
+      <figure><img src="img/cosmos-sky.png" alt="COSMOS 0.4: the sky alone, Saturn chosen" loading="lazy"><figcaption><b>The sky alone</b>, Saturn chosen: four corners around it, its rings and its chime.</figcaption></figure>
+      <figure><img src="img/cosmos-settings.png" alt="COSMOS 0.4's settings" loading="lazy"><figcaption><b>Settings</b>: the city, the date, the time, the weather.</figcaption></figure>
       <figure><img src="img/probe-main.png" alt="COSMOS PROBE's main screen" loading="lazy"><figcaption><b>PROBE</b>: the network, the data and the memory left.</figcaption></figure>
       <figure><img src="img/probe-networks.png" alt="COSMOS PROBE's list of networks" loading="lazy"><figcaption><b>PROBE</b>: the networks around.</figcaption></figure>
       <figure><img src="img/probe-password.png" alt="COSMOS PROBE's password screen" loading="lazy"><figcaption><b>PROBE</b>: a password typed on the panel.</figcaption></figure>
@@ -169,14 +170,14 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
 
 <section>
   <div class="wrap">
-    <h2>Playing the first stage</h2>
+    <h2>Playing COSMOS</h2>
     <p class="sub">On a computer with Chrome or Edge and the FM-1 on USB. Installing firmware is at your own risk; the installer puts M-VAVE's own firmware back too. Decline m-bootloader when it is offered: COSMOS does not need it.</p>
     <ol class="steps">
-      <li><span><b>Install</b> from the <a href="install/">installer</a>. The FM-1 restarts as COSMOS, and the drones start.</span></li>
-      <li><span><b>The sky on the knobs</b>: <span class="keys">K1</span> the sun's height, <span class="keys">K2</span> the clouds, <span class="keys">K3</span> the pressure, <span class="keys">K4</span> the Kp index, <span class="keys">ALGO</span> the moon around its cycle, <span class="keys">PRESET</span> the pressure falling, steady or rising.</span></li>
+      <li><span><b>Install</b> from the <a href="install/">installer</a>. The FM-1 restarts as COSMOS: the readings over the sky, then the sky alone.</span></li>
+      <li><span><b>Set your place and time</b>: <span class="keys">HOME</span> opens the settings. <span class="keys">SELECT</span> picks a row (city, date, time, weather), <span class="keys">ALGO</span> changes it a step, <span class="keys">PRESET</span> a big step, <span class="keys">HOME</span> saves and goes back. Until WiFi comes, the clock runs from the time you set.</span></li>
+      <li><span><b>The sky plays</b>: the sun's height and the moon's cycle come from the sky. The weather drifts by itself (RANDOM), or take it in hand: <span class="keys">K2</span> the clouds, <span class="keys">K3</span> the pressure, <span class="keys">K4</span> the Kp index, <span class="keys">PRESET</span> the pressure's trend.</span></li>
+      <li><span><b>The planets</b>: <span class="keys">SELECT</span> goes round the planets on the screen; the one chosen gets four corners, changes the engine and adds its voice. When it sets, its voice goes.</span></li>
       <li><span><b>The notes</b>: the left half of the keyboard (F3 to F♯4) moves drone 1, the right half (G4 to G5) drone 2; <span class="keys">OCT−</span> <span class="keys">OCT+</span> their octave. <span class="keys">SEL</span> puts the pressure in the harmony or leaves it out. <span class="keys">PLAY</span> fades the drones out and in, <span class="keys">MASTER</span> is the volume.</span></li>
-      <li><span><b>The planets</b>: <span class="keys">SELECT</span> chooses one, its engine and its voice. For now all five can be chosen; once the sky is computed, only those on the screen.</span></li>
-      <li><span><b>The bottom line</b> shows what the chip spends (the audio's share of its time, the memory left) and the battery.</span></li>
       <li><span><b>Back to stock</b>: "Back to the stock firmware" on the installer page.</span></li>
     </ol>
   </div>
