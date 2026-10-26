@@ -34,6 +34,7 @@
 #include "dsp/engine.h"
 #include "dsp/astro.h"
 #include "sky_data.h"
+#include "splash_data.h"
 
 extern uint32_t shim_heap_used;
 extern const uint32_t shim_heap_size;
@@ -114,6 +115,7 @@ static struct {
     int pick;                            /* WiFi: the network picked in the list */
     char ssid[33], pass[64];             /* the one being joined, its password as typed */
     int plen, ch;                        /* the password's length, the character SELECT is on */
+    uint32_t splash_t0;                  /* the splash running since (plat_ms; 0: over) */
 } ui = {.rnd = 0x2545F491u};
 
 static uint32_t unix_now(void) { return ui.clock_unix + (plat_ms() - ui.clock_ms) / 1000u; }
@@ -334,12 +336,66 @@ void app_say(const char *a, const char *b)
     ui.touched = plat_ms();
 }
 
-void app_splash(void)
+static uint16_t grey(int32_t g);
+
+/* ---------------------------------------------------------------- the splash --- */
+/* scattered stars gather into the word COSMOS (splash_data.h: Michroma, a star every other pixel), hold, and fade
+ * into the sky: 4.4 s, any button or key cuts it short. Each star's start, delay, brightness and twinkle come from a
+ * hash of its number (no memory for them); a few dim stars twinkle behind */
+#define SPLASH_MS 4400u
+#define SPLASH_SKY 45u
+static uint32_t hash(uint32_t i)
+{
+    i ^= i >> 16;
+    i *= 0x7FEB352Du;
+    i ^= i >> 15;
+    i *= 0x846CA68Bu;
+    return i ^ (i >> 16);
+}
+static float h01(uint32_t i, uint32_t k) { return (float)(hash(i * 8u + k + 0x5EEDu) & 0xFFFFu) / 65536.0f; }
+static float ease(float t)
+{
+    t = fm_clampf(t, 0.0f, 1.0f);
+    if (t < 0.5f)
+        return 4.0f * t * t * t;
+    t = 2.0f - 2.0f * t;
+    return 1.0f - t * t * t * 0.5f;
+}
+
+static void splash_frame(float t)
+{
+    float in = fm_minf(1.0f, t / 0.6f), out = 1.0f - fm_clampf((t - 3.6f) / 0.6f, 0.0f, 1.0f);
+    int32_t s;
+    uint32_t i;
+    for (s = 0; s < 5; s++) {
+        int32_t y0 = s * 48;
+        cv_begin(240, 48, C_BLACK);
+        for (i = 0; i < SPLASH_SKY; i++) {   /* the sky behind, dim, twinkling */
+            int32_t x = (int32_t)(h01(i + 1000u, 0) * 240.0f), y = (int32_t)(h01(i + 1000u, 1) * 240.0f);
+            float g = (35.0f + 55.0f * h01(i + 1000u, 2)) * (0.75f + 0.25f * fm_sinf(t * 5.0f + 6.3f * h01(i + 1000u, 3)));
+            if (y >= y0 && y < y0 + 48)
+                cv_pset(x, y - y0, grey((int32_t)(g * in * out)));
+        }
+        for (i = 0; i < NSPLASH; i++) {     /* the word's stars: 0.6 s scattered, then each glides in over 1.4 s */
+            float k = ease((t - 0.6f - 0.45f * h01(i, 2)) / 1.4f), g0 = 50.0f + 100.0f * h01(i, 3), g;
+            float x = h01(i, 0) * 240.0f, y = h01(i, 1) * 240.0f;
+            int32_t xi, yi;
+            x += ((float)SPLASH_XY[i][0] - x) * k;
+            y += ((float)SPLASH_XY[i][1] - y) * k;
+            yi = (int32_t)(y + 0.5f);
+            if (yi < y0 || yi >= y0 + 48)
+                continue;
+            xi = (int32_t)(x + 0.5f);
+            g = (g0 + (235.0f - g0) * k) * (0.85f + 0.15f * fm_sinf(t * (7.0f - 4.0f * k) + 6.3f * h01(i, 4)));
+            cv_pset(xi, yi - y0, grey((int32_t)(g * in * out)));
+        }
+        cv_blit(0, (uint32_t)y0);
+    }
+}
+
+void app_splash(void)                    /* at boot: black; the stars start in app_frame */
 {
     lcd_fill(0, 0, 240, 240, C_BLACK);
-    cv_begin(240, 32, C_BLACK);
-    cv_text((240 - text_w(&FONT_L, APP_NAME)) / 2, 0, &FONT_L, APP_NAME, C_WHITE);
-    cv_blit(0, 104);
 }
 
 /* ------------------------------------------------------------------ the sky --- */
@@ -1386,6 +1442,7 @@ void app_input_only(void) { input(); }
 void app_ui_init(void)
 {
     lcd_fill(0, 0, 240, 240, C_BLACK);
+    ui.splash_t0 = plat_ms() | 1u;       /* the stars gather first */
     if (!set.offline)
         plat_wifi_on(1);                 /* it joins the networks kept; the weather follows (net_tick) */
     ui.touched = plat_ms();              /* the readings show at the start */
@@ -1394,6 +1451,11 @@ void app_ui_init(void)
 void app_frame(void)
 {
     uint32_t now = plat_ms();
+    if (ui.splash_t0 && (now - ui.splash_t0 >= SPLASH_MS || plat_buttons() || plat_keys())) {   /* over, or cut */
+        ui.splash_t0 = 0;
+        ui.touched = now;
+        lcd_fill(0, 0, 240, 240, C_BLACK);
+    }
     input();
     if (ui.last_sky == 0 || now - ui.last_sky > 2000u) {   /* the sky every 2 s: the stars move slowly */
         ui.last_sky = now ? now : 1u;
@@ -1426,6 +1488,13 @@ void app_frame(void)
         ui.alpha += (to - ui.alpha) * (to > ui.alpha ? 0.5f : 0.09f);
         if (ui.alpha < 0.01f && to == 0.0f)
             ui.alpha = 0.0f;
+    }
+    if (ui.splash_t0) {                  /* the splash, 20 frames a second */
+        if (now - ui.last_frame >= 50u) {
+            ui.last_frame = now;
+            splash_frame((float)(now - ui.splash_t0) / 1000.0f);
+        }
+        return;
     }
     if (now - ui.last_frame < (ui.alpha > 0.0f && ui.alpha < 1.0f ? 60u : 120u))   /* ~16 frames a second fading */
         return;

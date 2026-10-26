@@ -10,7 +10,7 @@
 
 #define APP_NAME "COSMOS"
 #define APP_SPLASH_RGB RGB(255, 255, 255)
-#define APP_SPLASH                       /* app_splash: the name on black (stage 4: the stars gather into it) */
+#define APP_SPLASH                       /* app_splash: black at boot; the stars gather into the name in the first frames */
 #define APP_BLOCK 256u
 #define APP_CANVAS_PX (240u * 48u)       /* a strip at a time: WiFi's buffers need the pool (gfx.c) */
 
