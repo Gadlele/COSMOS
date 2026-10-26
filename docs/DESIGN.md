@@ -82,6 +82,12 @@ SKY 100%         UPD 12 MIN
 - The text fades in (0.3 s) when a key or knob is touched, holds (2 s after the last touch), then fades out
   (1.5 s) and leaves the sky on the whole screen. See `docs/img/rome-2026-11-09-fade.gif`.
 
+### Splash
+
+At power-on, scattered stars gather into the word COSMOS (Terminus 32 bold, every other pixel a star, at twice the
+size: 398 stars), hold, and fade into the sky: 4.4 s. See `tools/splash_preview.py` and `docs/img/splash.gif`;
+the firmware draws it in `app_splash` (fm1-base's APP_SPLASH).
+
 ### The sky behind the text
 
 The real sky over the player's location, now:
