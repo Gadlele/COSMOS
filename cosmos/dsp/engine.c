@@ -2,11 +2,11 @@
  * Copyright (C) 2026 the COSMOS contributors */
 /* COSMOS's engine (engine.h), in single-precision floats (the FM-1's FPU) at 44.1 kHz.
  *
- * Each drone is a small instrument of its own, on its own note:
- *   main oscillator ─┐ (the moon's four characters, blended; a planet may soften it toward a sine)
- *   partner ─────────┼─ drive ─ its own resonant filter ─ its breath ─┐   the partner an interval above (the pressure's,
- *   sub ─────────────┤                                                │   or an octave), a few cents off: it beats
- *   pink noise ──────┘                                                │
+ * Each drone is a warm analog pad on two notes of the chord, its tone and its partner:
+ *   tone: two oscillators ──┐ each note two band-limited oscillators a few cents apart (saw, pulse with a slow PWM,
+ *   partner: two more ──────┼─ drive ─ its own resonant filter ─ its breath ─┐   triangle or sine: the engine's,
+ *   sub ────────────────────┤                                                │   or with no planet the moon's), the
+ *   pink noise ─────────────┘                                                │   pitch wandering like worn tape
  *          drone A a little left, drone B a little right, ring-modulated in a storm ◄──────────┘
  *   + the planet's rhythmic voice
  *   ─┬─ dry ────────────────────────────────┬─ warmth (a soft drive over the sound and its echoes) ─ out
@@ -32,26 +32,32 @@ static const uint32_t RV_LEN[4] = {2999u, 3571u, 4111u, 4651u};  /* its lines: 6
 #define RV_N (2999u + 3571u + 4111u + 4651u)
 
 /* ------------------------------------------------------------------ the planets --- */
+/* the pad's oscillators: how much of each wave */
+enum { W_SINE, W_TRI, W_SAW, W_PULSE, NW };
 typedef struct {
-    float sine;                          /* the oscillators softened toward a pure sine, 0..1 */
-    float pr_mul;                        /* the partner's ratio times this... */
-    float pr_fixed;                      /* ...or this one, inharmonic (0: none) */
+    float moon;                          /* 1: the waves are the moon's (new a sine, waxing a triangle, full a saw,
+                                          * waning a pulse); 0: the engine's own */
+    float w[NW];                         /* the engine's waves */
+    float detune;                        /* each note's second oscillator, cents above the first */
+    float mix;                           /* the second's level */
+    float wow;                           /* the tape: how far the pitch wanders, cents */
+    float spread;                        /* the drones apart in the stereo, 0..1 */
     float partner, sub, drive, cutoff, q, noise, verb;   /* multipliers (verb: added) */
 } engine_t;
 static const engine_t ENGINES[PL_N] = {
-    /*            sine  pr_mul pr_fixed partner sub  drive cutoff q    noise verb */
-    [PL_NONE] = {0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f},
-    [PL_SUN] = {0.1f, 1.0f, 0.0f, 1.0f, 0.6f, 1.0f, 1.5f, 0.8f, 0.5f, 0.10f},       /* radiant, open */
-    [PL_MOON] = {0.6f, 1.0f, 0.0f, 0.7f, 0.7f, 0.6f, 0.9f, 1.4f, 0.4f, 0.20f},      /* silver, singing */
-    [PL_MERCURY] = {0.3f, 2.0f, 0.0f, 0.8f, 0.2f, 0.7f, 1.7f, 0.8f, 0.5f, 0.05f},   /* thin and bright */
-    [PL_VENUS] = {0.85f, 2.0f, 0.0f, 0.55f, 0.8f, 0.55f, 1.3f, 0.5f, 0.3f, 0.15f},  /* sweet, glass */
-    [PL_MARS] = {0.0f, 1.0f, 0.0f, 1.2f, 1.0f, 2.6f, 1.15f, 1.3f, 2.0f, -0.05f},    /* raw, driven */
-    [PL_JUPITER] = {0.4f, 1.0f, 0.0f, 0.7f, 1.9f, 0.9f, 0.6f, 0.6f, 0.6f, 0.05f},   /* deep and warm */
-    [PL_SATURN] = {0.2f, 1.0f, 2.76f, 0.9f, 0.8f, 0.8f, 1.1f, 1.6f, 0.6f, 0.1f},    /* metallic, ringed */
+    /*                moon   sine  tri   saw   pulse  dtn   mix   wow   sprd  partner sub drive cutoff q  noise verb */
+    [PL_NONE] = {1.0f, {0.0f, 0.0f, 0.0f, 0.0f}, 12.0f, 0.75f, 7.0f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f},
+    [PL_SUN] = {0.0f, {0.0f, 0.0f, 1.0f, 0.0f}, 18.0f, 0.65f, 5.0f, 0.6f, 1.0f, 0.5f, 1.0f, 1.4f, 0.8f, 0.4f, 0.08f},     /* SUN PAD: saws, open */
+    [PL_MOON] = {0.0f, {0.0f, 0.0f, 0.0f, 1.0f}, 6.0f, 0.75f, 6.0f, 0.7f, 0.9f, 0.6f, 0.8f, 0.9f, 1.3f, 0.4f, 0.18f},     /* MOON: a slow PWM */
+    [PL_MERCURY] = {0.0f, {1.0f, 0.0f, 0.0f, 0.0f}, 20.0f, 0.9f, 4.0f, 0.8f, 1.0f, 0.3f, 0.8f, 1.6f, 0.8f, 0.3f, 0.12f},  /* GLASS: sines apart */
+    [PL_VENUS] = {0.0f, {0.0f, 0.4f, 0.6f, 0.0f}, 14.0f, 0.6f, 6.0f, 0.5f, 0.9f, 0.7f, 0.9f, 0.75f, 0.7f, 0.3f, 0.12f},   /* WARM PAD: dark saws */
+    [PL_MARS] = {0.0f, {0.0f, 0.0f, 0.3f, 0.7f}, 10.0f, 0.5f, 22.0f, 0.4f, 1.1f, 1.0f, 2.2f, 1.0f, 1.2f, 1.6f, -0.05f},   /* TAPE: a worn cassette */
+    [PL_JUPITER] = {0.0f, {0.0f, 0.0f, 1.0f, 0.0f}, 14.0f, 0.8f, 4.0f, 0.3f, 0.8f, 1.8f, 1.0f, 0.55f, 0.6f, 0.5f, 0.05f}, /* DRONE: deep saws */
+    [PL_SATURN] = {0.0f, {0.0f, 0.8f, 0.0f, 0.2f}, 12.0f, 0.65f, 9.0f, 0.9f, 1.0f, 0.8f, 0.9f, 1.1f, 1.2f, 2.4f, 0.15f},  /* HAZE: triangles in noise */
 };
 static const char *const PL_NAME[PL_N] = {"", "SUN", "MOON", "MERCURY", "VENUS", "MARS", "JUPITER", "SATURN"};
 /* each planet's engine, in a word */
-static const char *const PL_VOICE[PL_N] = {"", "RADIANT", "SILVER", "BRIGHT", "SWEET", "RAW", "DEEP", "METAL"};
+static const char *const PL_VOICE[PL_N] = {"", "SUN PAD", "MOON", "GLASS", "WARM", "TAPE", "DRONE", "HAZE"};
 
 const char *planet_name(int32_t p) { return p > 0 && p < PL_N ? PL_NAME[p] : ""; }
 const char *planet_voice(int32_t p) { return p > 0 && p < PL_N ? PL_VOICE[p] : ""; }
@@ -84,13 +90,13 @@ void sky_map(const sky_t *s, sky_map_t *m)
     m->pr[0] = s->pr[0] > 0.0f ? s->pr[0] : fm_exp2f((float)m->interval / 12.0f);   /* a chord's, or the pressure's */
     m->pr[1] = s->pr[1] > 0.0f ? s->pr[1] : fm_exp2f((float)m->interval / 12.0f);
     m->beat = 2.5f + (s->linked ? fm_maxf(0.0f, t) * 6.0f : 0.0f);   /* a slow beat, faster in tension */
-    /* the sun: 160 Hz at night, 900 at the horizon, 7 kHz at 65 degrees */
+    /* the sun: 450 Hz at night (dark, but the chord still heard), 1.2 kHz at the horizon, 7 kHz at 65 degrees */
     if (h < -18.0f)
-        m->cutoff = 160.0f;
+        m->cutoff = 450.0f;
     else if (h < 0.0f)
-        m->cutoff = 160.0f * fm_powf(900.0f / 160.0f, (h + 18.0f) / 18.0f);
+        m->cutoff = 450.0f * fm_powf(1200.0f / 450.0f, (h + 18.0f) / 18.0f);
     else
-        m->cutoff = 900.0f * fm_powf(7000.0f / 900.0f, fm_clampf(h / 65.0f, 0.0f, 1.0f));
+        m->cutoff = 1200.0f * fm_powf(7000.0f / 1200.0f, fm_clampf(h / 65.0f, 0.0f, 1.0f));
     /* the moon: its lit fraction, its character around the cycle; full, the filters sing */
     m->lit = (1.0f - fm_cosf(FM_TWO_PI * x)) * 0.5f;
     m->morph = x * 4.0f;
@@ -115,7 +121,9 @@ static uint32_t dly_i, ap_i[4], rv_i[4];
 
 typedef struct {                         /* a drone */
     float hz;                            /* its pitch, gliding */
-    uint32_t ph, php, phs;               /* main, partner, sub */
+    uint32_t ph, ph2, php, php2, phs;    /* the tone's two oscillators, the partner's two, the sub */
+    float wow, wow_rate, pwm;            /* the tape's wander (a phase 0..1, Hz), the pulse's width going round */
+    float inc2, incp2;
     float s1, s2;                        /* its filter (Simper's state-variable filter) */
     float dp, dc, dl, dd;                /* its wanders: pitch, cutoff, level, the partner's detune (-1..1) */
     float breath, breath_rate;           /* its slow swell: phase 0..1, Hz */
@@ -141,7 +149,8 @@ static struct {                          /* where the render is: each glides to 
     float alp;                           /* their low-pass: soft, not bell-like */
     uint32_t rnd;
     int started;
-} e = {.rnd = 0x9E3779B9u, .d = {{.breath_rate = 0.043f}, {.breath = 0.37f, .breath_rate = 0.031f}}};
+} e = {.rnd = 0x9E3779B9u, .d = {{.breath_rate = 0.043f, .wow_rate = 0.53f},
+                                  {.breath = 0.37f, .breath_rate = 0.031f, .wow = 0.4f, .wow_rate = 0.41f}}};
 
 uint32_t eng_bytes(void) { return (2u * DLY_N + AP_N + RV_N) * 2u; }
 
@@ -278,11 +287,18 @@ static void drone_block(drone_t *d, float hz, float pratio, float cutoff, uint32
     d->dc = fm_clampf(d->dc + rnd_pm() * sp, -1.0f, 1.0f) * 0.999f;
     d->dl = fm_clampf(d->dl + rnd_pm() * sp, -1.0f, 1.0f) * 0.999f;
     d->dd = fm_clampf(d->dd + rnd_pm() * sp, -1.0f, 1.0f) * 0.999f;
-    hz = d->hz * fm_exp2f(d->dp * (3.0f + 30.0f * depth * depth) / 1200.0f);
-    /* a chord's tone; else the planet's partner (Saturn's inharmonic one), or the pressure's interval */
-    pr = target_chord ? pratio : e.eng.pr_fixed > 0.0f ? e.eng.pr_fixed : pratio * e.eng.pr_mul;
+    d->wow += d->wow_rate * (1.0f + 0.3f * d->dd) * (float)frames / SR;   /* the tape: slow, never quite even */
+    if (d->wow >= 1.0f)
+        d->wow -= 1.0f;
+    d->pwm += 0.13f * (float)frames / SR;
+    if (d->pwm >= 1.0f)
+        d->pwm -= 1.0f;
+    hz = d->hz * fm_exp2f((d->dp * (3.0f + 30.0f * depth * depth) + e.eng.wow * fm_sinf(FM_TWO_PI * d->wow)) / 1200.0f);
+    pr = pratio;                         /* the chord's tone, or the pressure's interval */
     d->inc = hz * TO32;
+    d->inc2 = hz * fm_exp2f(e.eng.detune / 1200.0f) * TO32;
     d->incp = hz * pr * fm_exp2f((e.beat + d->dd * 4.0f * depth) / 1200.0f) * TO32;
+    d->incp2 = d->incp * fm_exp2f(-e.eng.detune / 1200.0f);
     d->incs = hz * 0.5f * TO32;
     d->lvl = 1.0f + d->dl * 0.18f * depth;
     d->breath += d->breath_rate * (float)frames / SR;
@@ -297,20 +313,49 @@ static void drone_block(drone_t *d, float hz, float pratio, float cutoff, uint32
     }
 }
 
-/* a drone's sample: its oscillators and noise, driven into its filter, breathing */
-static inline float drone_tick(drone_t *d, int32_t m0, int32_t m1, float w1, float sn, uint32_t pm, float nz,
-                               float drv, float breath, float plv, float slv)
+/* polyBLEP: the step of a saw or a pulse rounded over a sample either side, so it does not alias */
+static inline float blep(float t, float dt)
 {
-    float w0 = (1.0f - w1) * (1.0f - sn), x, v1, v2, v3;
-    uint32_t ph, pp;
-    w1 *= 1.0f - sn;
+    if (t < dt) {
+        t /= dt;
+        return t + t - t * t - 1.0f;
+    }
+    if (t > 1.0f - dt) {
+        t = (t - 1.0f) / dt;
+        return t * t + t + t + 1.0f;
+    }
+    return 0.0f;
+}
+/* one oscillator, the waves mixed by w (those at 0 skipped), -1..1; pw the pulse's width */
+static inline float osc(uint32_t ph, float inc, const float *w, float pw)
+{
+    float t = (float)ph * (1.0f / 4294967296.0f), dt = inc * (1.0f / 4294967296.0f), x = 0.0f;
+    if (w[W_SINE] > 0.001f)
+        x += wt(SINE, ph) * w[W_SINE];
+    if (w[W_TRI] > 0.001f)
+        x += (fm_fabsf(4.0f * t - 2.0f) - 1.0f) * 0.9f * w[W_TRI];
+    if (w[W_SAW] > 0.001f)
+        x += (2.0f * t - 1.0f - blep(t, dt)) * 0.85f * w[W_SAW];
+    if (w[W_PULSE] > 0.001f) {
+        float t2 = t + 1.0f - pw;
+        t2 -= (float)(int32_t)t2;
+        x += ((t < pw ? 1.0f : -1.0f) + blep(t, dt) - blep(t2, dt) - (2.0f * pw - 1.0f)) * 0.55f * w[W_PULSE];
+    }
+    return x;
+}
+
+/* a drone's sample: its oscillators and noise, driven into its filter, breathing */
+static inline float drone_tick(drone_t *d, const float *w, float mix, float pw, uint32_t pm, float nz, float drv,
+                               float breath, float plv, float slv)
+{
+    float x, v1, v2, v3;
     d->ph += (uint32_t)d->inc;
+    d->ph2 += (uint32_t)d->inc2;
     d->php += (uint32_t)d->incp;
+    d->php2 += (uint32_t)d->incp2;
     d->phs += (uint32_t)d->incs;
-    ph = d->ph + pm;
-    pp = d->php + pm;
-    x = (wt(WAVES[m0], ph) * w0 + wt(WAVES[m1], ph) * w1 + wt(SINE, ph) * sn) * 0.62f;
-    x += (wt(WAVES[m0], pp) * w0 + wt(WAVES[m1], pp) * w1 + wt(SINE, pp) * sn) * plv;
+    x = (osc(d->ph + pm, d->inc, w, pw) + osc(d->ph2 + pm, d->inc2, w, 1.0f - pw) * mix) * 0.45f;
+    x += (osc(d->php + pm, d->incp, w, pw) + osc(d->php2 + pm, d->incp2, w, 1.0f - pw) * mix) * plv;
     x += wt(SINE, d->phs) * slv + nz;
     x = sat(x * drv);
     v3 = x - d->s2;
@@ -324,9 +369,9 @@ static inline float drone_tick(drone_t *d, int32_t m0, int32_t m1, float w1, flo
 void eng_render(int32_t *lr, uint32_t n, float gain)
 {
     uint32_t i;
-    float incR, incW, fmd, ring, dry_amp, to0, to1, k0, k1, drv, brA, brB, decay, plv, slv, nzl, sn, verb;
-    int32_t m0, m1;
-    float mw;
+    float incR, incW, fmd, ring, dry_amp, to0, to1, k0, k1, drv, brA, brB, decay, plv, slv, nzl, verb, w[NW], mix;
+    float pwA, pwB, sp, mw;
+    int32_t m0, k;
     if (!dly) {                          /* no lines (no heap): silence */
         for (i = 0; i < 2u * n; i++)
             lr[i] = 0;
@@ -380,9 +425,14 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
     {   /* the planet's engine, over ~2 s (an inharmonic partner jumps: it has no in-between) */
         const engine_t *t = &ENGINES[target_planet];
         float k = 0.003f;
-        e.eng.sine = glide(e.eng.sine, t->sine, k);
-        e.eng.pr_mul = glide(e.eng.pr_mul, t->pr_mul, k);
-        e.eng.pr_fixed = t->pr_fixed;
+        int32_t j;
+        e.eng.moon = glide(e.eng.moon, t->moon, k);
+        for (j = 0; j < NW; j++)
+            e.eng.w[j] = glide(e.eng.w[j], t->w[j], k);
+        e.eng.detune = glide(e.eng.detune, t->detune, k);
+        e.eng.mix = glide(e.eng.mix, t->mix, k);
+        e.eng.wow = glide(e.eng.wow, t->wow, k);
+        e.eng.spread = glide(e.eng.spread, t->spread, k);
         e.eng.partner = glide(e.eng.partner, t->partner, k);
         e.eng.sub = glide(e.eng.sub, t->sub, k);
         e.eng.drive = glide(e.eng.drive, t->drive, k);
@@ -396,13 +446,19 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
     notes_block();
     incR = (e.d[0].hz * 2.71f + 3.0f) * TO32;
     incW = 0.37f * TO32;
-    /* the moon's character: two neighbouring tables and how far between */
+    /* the waves: the moon's (two neighbours around its cycle: sine, triangle, saw, pulse), the engine's, or between */
     m0 = (int32_t)e.morph & 3;
-    m1 = (m0 + 1) & 3;
     mw = e.morph - fm_floorf(e.morph);
     mw = mw * mw * (3.0f - 2.0f * mw);
-    sn = e.eng.sine;
-    plv = 0.30f * e.eng.partner;
+    for (k = 0; k < NW; k++)
+        w[k] = e.eng.w[k] * (1.0f - e.eng.moon);
+    w[m0] += (1.0f - mw) * e.eng.moon;
+    w[(m0 + 1) & 3] += mw * e.eng.moon;
+    mix = e.eng.mix;
+    pwA = 0.5f + 0.32f * fm_sinf(FM_TWO_PI * e.d[0].pwm);   /* the pulse's width going round, slowly */
+    pwB = 0.5f + 0.32f * fm_sinf(FM_TWO_PI * (e.d[1].pwm + 0.37f));
+    sp = e.eng.spread;
+    plv = 0.40f * e.eng.partner;
     slv = e.sub * e.eng.sub;
     nzl = e.noise * e.eng.noise;
     verb = fm_clampf(e.verb + e.eng.verb, 0.0f, 0.95f);
@@ -432,14 +488,14 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
         e.p2 = 0.57000f * e.p2 + white * 1.0526913f;
         nzA = (e.p0 + e.p1 + e.p2 + white * 0.1848f) * 0.18f * nzl;
         nzB = (e.p0 - e.p1 + e.p2) * 0.18f * nzl;
-        a = drone_tick(&e.d[0], m0, m1, mw, sn, 0u, nzA, drv, brA, plv, slv);
+        a = drone_tick(&e.d[0], w, mix, pwA, 0u, nzA, drv, brA, plv, slv);
         pm = (uint32_t)(int32_t)(a * fmd * 4294967296.0f);   /* the storm: A bends B */
-        b = drone_tick(&e.d[1], m0, m1, mw, sn, pm, nzB, drv, brB, plv, slv);
-        /* A a little left, B a little right */
+        b = drone_tick(&e.d[1], w, mix, pwB, pm, nzB, drv, brB, plv, slv);
+        /* A to the left, B to the right, as far as the engine spreads them */
         a *= e.gate[0];
         b *= e.gate[1];
-        l = a * 0.80f + b * 0.40f;
-        r = a * 0.40f + b * 0.80f;
+        l = a * (0.6f + 0.3f * sp) + b * (0.6f - 0.4f * sp);
+        r = a * (0.6f - 0.4f * sp) + b * (0.6f + 0.3f * sp);
         e.phR += (uint32_t)incR;
         ro = wt(SINE, e.phR);
         l = l * dry_amp + l * ro * ring;

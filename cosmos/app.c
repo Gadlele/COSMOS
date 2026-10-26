@@ -72,6 +72,8 @@ static uint8_t pl_drawn[PL_N];           /* bright enough to show through the sk
 static uint8_t pl_up[PL_N];              /* can be chosen from nature: up, on the square, the sky dark enough for it */
 static uint8_t star_flash[NSTARS];       /* a star the arpeggiator just played: frames it stays bright */
 static uint8_t pl_flash[PL_N];           /* a planet it just played: frames its glow lasts */
+static uint8_t star_dim[(NSTARS + 7) / 8];   /* a star the sky would hide (day, clouds, the moon): drawn faint */
+#define STAR_FLOOR 3.0f                  /* the stars down to this magnitude always show, faint when hidden */
 static float limit;                      /* the faintest magnitude the sky lets through now */
 static volatile int panic;
 static int eng_ok;
@@ -348,9 +350,14 @@ static void sky_update(void)
     for (i = 0; i < (int32_t)NSTARS; i++) {
         altaz_t p = astro_altaz((float)STARS[i].ra * (FM_TWO_PI / 65536.0f), (float)STARS[i].dec * 0.000174532925f,
                                 now_sky.lst, lat * 0.0174532925f);
-        if ((float)STARS[i].mag10 / 10.0f <= limit && astro_project(p, &x, &y)) {
+        float mag = (float)STARS[i].mag10 / 10.0f;
+        if (mag <= fm_maxf(limit, STAR_FLOOR) && astro_project(p, &x, &y)) {
             star_x[i] = (uint8_t)x;
             star_y[i] = (uint8_t)y;
+            if (mag > limit)
+                star_dim[i >> 3] |= (uint8_t)(1u << (i & 7));
+            else
+                star_dim[i >> 3] &= (uint8_t)~(1u << (i & 7));
         } else {
             star_y[i] = 255;
         }
@@ -504,7 +511,7 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
     line2(lines[0], sky.on ? "COSMOS" : "COSMOS  (OFF)", v);
     copy(lines[1], "----------------------------", 32);
     col[1] = C_LOW;
-    fil = round_f(fm_log2f(m.cutoff / 160.0f) / fm_log2f(7000.0f / 160.0f) * 99.0f);
+    fil = round_f(fm_log2f(m.cutoff / 450.0f) / fm_log2f(7000.0f / 450.0f) * 99.0f);
     q = put(v, sky.sun >= 0.0f ? "+" : "");
     put_int(q, round_f(sky.sun));
     field(l, "SUN", v, 12);
@@ -615,6 +622,10 @@ static void sky_frame(void)
                 cv_pset(star_x[i] + 1, y - y0, grey(120));
                 cv_pset(star_x[i], y - 1 - y0, grey(120));
                 cv_pset(star_x[i], y + 1 - y0, grey(120));
+                continue;
+            }
+            if (star_dim[i >> 3] >> (i & 7) & 1u) {   /* behind the day, the clouds or the moon: faint, steady */
+                cv_pset(star_x[i], y - y0, grey(46));
                 continue;
             }
             g = 161 - (int32_t)((float)STARS[i].mag10 * 2.6f) + (int32_t)(rnd() % (uint32_t)(2 * tw + 1)) - tw;
@@ -856,6 +867,8 @@ static void arp_tick(void)
         if (best[i] >= 0) {
             int32_t st = best[i], deg = (239 - star_y[st]) * 15 / 240;
             float amp = 0.08f + (float)(ARP_MAG10 - STARS[st].mag10) * 0.003f;
+            if (star_dim[st >> 3] >> (st & 7) & 1u)   /* a hidden one: softly */
+                amp *= 0.45f;
             eng_note(sky.root_hz * 4.0f * ratio(semis(deg)), amp);
             star_flash[st] = 5;
         }
@@ -917,7 +930,7 @@ static void input(void)
     int k;
     ui.btn = btn;
     ui.keys = keys;
-    if (btn || keys || e1 || e2 || e3 || e4 || ea || ep || es)
+    if (down || kdown || e1 || e2 || e3 || e4 || ea || ep || es)   /* a new touch (a held button is not one) */
         ui.touched = now;
     if (down >> B_GLO & 1u) {            /* the settings, and back */
         to_screen(!ui.screen);

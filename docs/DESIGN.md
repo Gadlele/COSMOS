@@ -11,10 +11,12 @@
 
 ## Sound engine
 
-Each drone is a small instrument of its own:
+Each drone is a warm analog pad on two notes of the chord, its tone and its partner:
 
-- a main oscillator in the moon's character (four wavetables, blended around the cycle)
-- a partner an octave up, a few cents off, so the two beat; tension beats faster
+- each note two band-limited oscillators a few cents apart, so they beat; tension beats faster
+- the waves: with no planet the moon's (new a sine, waxing a triangle, full a saw, waning a pulse, blended around
+  the cycle); with a planet its engine's
+- the pulse's width going slowly round (PWM), and the pitch wandering like a worn tape (wow)
 - a sub an octave down, and pink noise
 - all driven (a soft saturation) into the drone's own resonant filter
 - breathing: each drone swells at its own slow rate
@@ -44,13 +46,13 @@ any of them); when one sets, it goes. A planet brings three things:
 
 | Planet | Note (cosmic) | Natural | Chords (degrees) | Engine |
 | --- | --- | --- | --- | --- |
-| Sun | 126.22 Hz (B) | F | I V VI IV | radiant, open |
-| Moon | 210.42 Hz (G#) | C | I VI III IV | silver, singing |
-| Mercury | 141.27 Hz (C#) | D | I II IV V | thin and bright |
-| Venus | 221.23 Hz (A) | E | I IV VI V | sweet, glass |
-| Mars | 144.72 Hz (D) | G | I VII VI V | raw, driven |
-| Jupiter | 183.58 Hz (F#) | A | I IV II V | deep and warm |
-| Saturn | 147.85 Hz (D) | B | I III VII VI | metallic, ringed |
+| Sun | 126.22 Hz (B) | F | I V VI IV | SUN PAD: saws 18 cents apart, open |
+| Moon | 210.42 Hz (G#) | C | I VI III IV | MOON: a slow PWM, singing filter |
+| Mercury | 141.27 Hz (C#) | D | I II IV V | GLASS: sines 20 cents apart, wide |
+| Venus | 221.23 Hz (A) | E | I IV VI V | WARM: saws and triangles, dark |
+| Mars | 144.72 Hz (D) | G | I VII VI V | TAPE: pulse and saw, driven, a strong wow |
+| Jupiter | 183.58 Hz (F#) | A | I IV II V | DRONE: deep saws, a heavy sub |
+| Saturn | 147.85 Hz (D) | B | I III VII VI | HAZE: triangles in noise, wide |
 
 ## The arpeggiator
 
@@ -74,11 +76,11 @@ The slower a source changes, the more drastic its effect. Otherwise the sound st
 
 | Source | Pace | Controls | Depth |
 | --- | --- | --- | --- |
-| **Moon phase** | ~29.5 days | The instrument's character: oscillator types and base timbre, plus the sub level | Drastic. Each phase is a different world: new moon, pure dark sines; waxing, soft waves; full, rich waves with full sub and high resonance; waning, rough metallic timbres. Morphs continuously over days. |
+| **Moon phase** | ~29.5 days | The instrument's character: oscillator types and base timbre, plus the sub level | Drastic. Each phase is a different world: new moon, pure sines; waxing, soft triangles; full, rich saws with full sub and high resonance; waning, a rough pulse. Morphs continuously over days. A chosen planet brings its own waves. |
 | **Pressure** | days | Harmony: the interval of each drone's partner, and how fast they beat (SEL leaves it out: octaves) | Drastic. High: consonances, a slow beat. Falling: minor colours, tension, faster beating. Very low (storm): tritone, clusters. The trend over the last hours counts more than the value. |
 | **Kp index** | hours; storms are rare | Events: low Kp, a gentle drift; Kp 5 and up turns on ring mod and cross-modulation | Rare but drastic |
 | **Cloud cover** | hours | Space: reverb, delay, noise | Medium |
-| **Sun height** | continuous, daily | Light: filter cutoff | Gentle |
+| **Sun height** | continuous, daily | Light: filter cutoff (450 Hz at night, 1.2 kHz at the horizon, 7 kHz high) | Gentle |
 
 Sun height, not clock time: the sound follows the seasons by itself, and dawn sounds at dawn.
 
@@ -158,7 +160,8 @@ The real sky over the player's location, now:
 - **Planets** (Venus, Jupiter, Saturn, Mars, Mercury): steady points; they do not twinkle, the stars do. Venus and
   Jupiter 2×2 px, Saturn with a faint pixel on each side.
 - **Moon:** a 7–9 px disc with its real phase and position.
-- **Linked to the weather:** clouds hide the stars, faintest first; the sun up switches the sky off, twilight
+- **Linked to the weather:** clouds hide the stars, faintest first (the brightest, down to magnitude 3, stay, faint
+  and steady, so the sky and the arpeggio never empty; hidden ones play softly); the sun up switches the sky off, twilight
   leaves only the brightest; a full moon washes out the faint ones; Kp makes the stars twinkle.
 - **Readability:** the background stays in the dark half of the grey scale; every letter has a 1-px black
   outline; the moon dims while it passes behind text.
