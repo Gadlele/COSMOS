@@ -1328,7 +1328,8 @@ static void input(void)
     int k;
     ui.btn = btn;
     ui.keys = keys;
-    if (down || kdown || e1 || e2 || e3 || e4 || ea || ep || es)   /* a new touch (a held button is not one) */
+    if (down || (kdown && !ui.view_sky) || e1 || e2 || e3 || e4 || ea || ep || es)   /* a new touch (a held button is
+                                          * not one; on the sky alone, LFO or ARP, the keys only play) */
         ui.touched = now;
     if (down >> B_ENV & 1u) {            /* WiFi, and back */
         to_screen(ui.screen >= 2 ? 0 : 2);

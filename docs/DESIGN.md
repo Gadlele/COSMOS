@@ -130,7 +130,7 @@ With WiFi off (REC on the WiFi page), or no network in range:
 | **ENV** | the WiFi page (above), and back; lit bright while the weather is the network's |
 | **EDIT** | everything by hand, the readings held on the screen: K1 the sun's height, K2 the clouds, K3 the pressure, K4 Kp, ALGO the moon's cycle, PRESET the pressure's trend |
 | **SEL** | the next planet up (in EDIT any of the seven classical ones), or none |
-| **LFO** | the sky alone (a touch brings the readings back for two seconds), and back |
+| **LFO** | the sky alone (a button or a knob brings the readings back for two seconds; the keys only play), and back |
 | **ARP** | the ARP screen: the sky, the arpeggiator on, its line, what it plays lighting up; again: off, and back |
 | **GLO** | the settings: latitude, longitude, UTC offset, summer time, date, time (local), the instrument (AUTO: the pressure's, or ORGAN, STRINGS, CHOIR, WARM PAD), the tuning (COSMIC, EQUAL or NATURAL) |
 | **PLAY** | the sky stopped or playing; stopped, a key still sounds its chord, held and for 10 s after. Stopping saves |
