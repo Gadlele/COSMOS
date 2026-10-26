@@ -77,7 +77,11 @@ static struct {
     int32_t wcode;                       /* the network's weather code (WMO), -1 none */
 } nat = {30.0f, 1015.0f, 1.67f, 0, -1};
 
-static sky_now_t now_sky;                /* the last astro_now */
+static sky_now_t now_sky;
+#ifdef PLAT_WEB
+static uint32_t web_unix;                /* in the browser: the computer's clock and offset from UTC (web.c) */
+static int32_t web_utc_min;
+#endif                /* the last astro_now */
 static uint8_t star_x[NSTARS], star_y[NSTARS];   /* the stars on the screen (y 255: not up, or off the square) */
 static int16_t pl_x[PL_N], pl_y[PL_N];   /* each planet on the square, by PL_* (x -1: below the horizon or off it) */
 static uint8_t pl_drawn[PL_N];           /* bright enough to show through the sky now */
@@ -368,6 +372,13 @@ void app_init(void)
         || set.octave > 4 || set.pc[0] > 11 || set.pc[1] > 11 || set.tuning > 2)
         defaults();
     clock_set(set.unix_saved);           /* the clock goes on from where it was saved */
+#ifdef PLAT_WEB
+    if (web_unix) {                      /* in the browser: the visitor's time now */
+        clock_set(web_unix);
+        set.utc4 = (int8_t)(web_utc_min / 15);
+        set.summer = 0;
+    }
+#endif
     sky.clouds = nat.clouds = set.clouds;   /* nature starts from where it was (the network brings it up to date) */
     sky.press = nat.press = set.press;
     sky.kp = nat.kp = set.kp;
@@ -1657,8 +1668,13 @@ void app_frame(void)
 #ifdef PLAT_HOST
 uint32_t shim_heap_used = 0;
 const uint32_t shim_heap_size = 278528;
-/* the host simulator has no lwIP (net.c is the device's): the fetch answers at once */
+/* the host simulator has no lwIP (net.c is the device's): the fetch answers at once; in the browser nothing comes
+ * (the weather is the simulated one, the time the computer's) */
+#ifdef PLAT_WEB
+static net_res_t host_res = {0, -1, -1, 0, NET_NONE_S, -1, -1, "", ""};
+#else
 static net_res_t host_res = {2, 85, 10032, -14, 3600, 233, 61, "Mon, 26 Oct 2026 21:41:02 GMT", ""};
+#endif
 int net_fetch(int32_t lat100, int32_t lon100)
 {
     (void)lat100;

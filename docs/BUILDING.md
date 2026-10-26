@@ -31,6 +31,18 @@ cd ~/fw-AC79_AIoT_SDK && git sparse-checkout set --no-cone include_lib apps/comm
 ./build.sh probe --host              # the host simulator: probe/build/host/probe_host SCRIPT OUTDIR
 ```
 
+## In the browser
+
+The site's `try/` page runs the firmware itself, compiled to WebAssembly (fm1-base's emulator, with COSMOS's page in
+`cosmos/web/emu/`). fm1-base builds it with Emscripten; `tools/wasm/emcc` stands in for it with the system's clang
+and wasi-libc (Ubuntu: `apt install clang lld wasi-libc libclang-rt-18-dev-wasm32`):
+
+```
+PATH=$PWD/tools/wasm:$PATH python3 base/tools/build.py cosmos --web   # cosmos/build/emu/
+```
+
+`tools/make_pages.py` copies it into the site; build it before each release.
+
 ## Install
 
 From the command line:

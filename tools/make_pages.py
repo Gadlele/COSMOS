@@ -4,7 +4,8 @@
 
   index.html, img/      the project page (web/site)
   install/, firmware/, words/   the web installer and its package (tools/make_install.py)
-  try/                  the sound in the browser (web/emulator: index.src.html with data.js)
+  try/                  COSMOS in the browser: the firmware itself on a simulated FM-1 (APP_DIR/build/emu, from
+                        base/tools/build.py APP_DIR --web with tools/wasm/emcc on the PATH; see docs/BUILDING.md)
 
   tools/make_pages.py APP_DIR PACKAGE.fwsc VERSION OUT_DIR"""
 import shutil
@@ -20,15 +21,10 @@ def main(app, pkg, version, out):
     subprocess.run([sys.executable, str(ROOT / "tools" / "make_install.py"), app, pkg, version, str(out)], check=True)
     shutil.copy(ROOT / "web" / "site" / "index.html", out / "index.html")
     shutil.copytree(ROOT / "web" / "site" / "img", out / "img")
-    emu = ROOT / "web" / "emulator"
-    page = (emu / "index.src.html").read_text(encoding="utf-8").replace("/*DATA*/", (emu / "data.js").read_text(encoding="utf-8"))
-    (out / "try").mkdir()
-    (out / "try" / "index.html").write_text(
-        '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
-        '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
-        '<link rel="icon" href="../img/icon.png">\n'
-        '<style>body{margin:0}[hidden]{display:none!important}</style>\n</head>\n<body>\n'
-        + page + '\n</body>\n</html>\n', encoding="utf-8")
+    emu = Path(app) / "build" / "emu"
+    if not (emu / "app.wasm").exists():
+        raise SystemExit(f"{emu}: no emulator: build it first (base/tools/build.py {app} --web, tools/wasm on the PATH)")
+    shutil.copytree(emu, out / "try", ignore=shutil.ignore_patterns("o2"))
     print(f"pages: {out}: index.html, img/, install/, try/")
 
 

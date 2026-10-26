@@ -13,6 +13,7 @@
 #define APP_SPLASH                       /* app_splash: black at boot; the stars gather into the name in the first frames */
 #define APP_BLOCK 256u
 #define APP_CANVAS_PX (240u * 48u)       /* a strip at a time: WiFi's buffers need the pool (gfx.c) */
+#define APP_WEB                          /* the browser emulator: the page's own exports (web.c) */
 
 /* the store: COSMOS's settings, the networks kept (OBJ_WIFI, the platform's), the radio's address and calibration
  * (OBJ_BLE), the panel calibration (the platform's) */

@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# A stand-in for emcc: fm1-base's --web build with the system's clang (wasm32-wasi, a reactor: the page calls
+# _initialize and the exports). Emscripten's -s options become the linker's.
+import subprocess, sys
+args, link_extra, compile_only = [], [], "-c" in sys.argv
+for a in sys.argv[1:]:
+    if a.startswith("-sSTACK_SIZE="):
+        link_extra.append("-Wl,-z,stack-size=" + a.split("=")[1])
+    elif a.startswith("-sINITIAL_MEMORY="):
+        link_extra.append("-Wl,--initial-memory=" + a.split("=")[1])
+    elif a.startswith("-s") or a == "--no-entry":
+        continue
+    else:
+        args.append(a)
+cmd = ["clang", "--target=wasm32-wasi", "--sysroot=/usr", "-D_WASI_EMULATED_SIGNAL", "-D_WASI_EMULATED_PROCESS_CLOCKS"] + args
+if not compile_only:
+    cmd += ["-mexec-model=reactor", "-Wl,--export-dynamic", "-Wl,--allow-undefined", "-lwasi-emulated-signal",
+            "-lwasi-emulated-process-clocks"] + link_extra
+sys.exit(subprocess.call(cmd))
