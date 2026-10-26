@@ -1225,7 +1225,7 @@ static void arp_tick(void)
     uint32_t now = plat_ms(), x = now % SWEEP_MS * 240u / SWEEP_MS, from = ui.sweep_x;
     int32_t i, best[2] = {-1, -1};
     ui.sweep_x = x;
-    if (!set.arp || !sky.on || x == from)
+    if (!set.arp || !sky.on || ui.splash_on || x == from)
         return;
     for (i = 0; i < (int32_t)NSTARS; i++) {   /* the two brightest it crossed since the last frame */
         uint32_t sx = star_x[i];
@@ -1493,8 +1493,9 @@ void app_frame(void)
         ui.last_weather = now;
     }
     harmony();                           /* the chords move on their own: every frame */
-    sky.drone_on[0] = sky.on || now < ui.key_until;   /* stopped, a key still plays */
-    sky.drone_on[1] = sky.on || now < ui.key_until;
+    sky.drone_on[0] = !ui.splash_on && (sky.on || now < ui.key_until);   /* after the splash; stopped, a key still
+                                                                         * plays */
+    sky.drone_on[1] = sky.drone_on[0];
     eng_sky(&sky);
     arp_tick();
     lights();
