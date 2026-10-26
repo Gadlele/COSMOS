@@ -12,7 +12,8 @@
  *   HOME   back to nature: the sun and the moon as they are, the weather as it comes (fetched with WiFi, stage 3;
  *          until then drifting by itself)
  *   EDIT   everything by hand, the readings held on the screen: K1 the sun's height, K2 the clouds, K3 the pressure,
- *          K4 Kp, ALGO the moon's cycle, PRESET the pressure's trend
+ *          K4 Kp, ALGO the moon's cycle; the pressure's trend follows the way K3 was turned
+ *   PRESET the drone's level, always (0 .. 100 %, in steps of 5)
  *   SEL    the next planet up (in EDIT any of the seven classical ones, the Sun and the Moon among them), or none
  *   LFO    the sky alone, and back      ARP the ARP screen, the arpeggio on; again, off and back
  *   GLO    the settings      PLAY the sky stopped or playing (stopping saves)      OCT- / OCT+ the octave
@@ -66,7 +67,10 @@ static struct {                          /* kept in the store (OBJ_SETTINGS) */
     uint8_t arp, offline, stars;         /* the arpeggiator on; WiFi off (0: on, fetching the weather); the star voice:
                                           * 0 the moon's (AUTO), 1..8 one fixed */
     float clouds, press, kp, sun, moon;  /* the sky by hand (EDIT) */
+    uint8_t drone, spare[3];             /* (0.19) the drone's level, 0..20 (twentieths); settings saved before it load
+                                          * without it */
 } set;
+#define SET_OLD_SIZE (sizeof set - 4u)   /* the settings before 0.19 */
 
 static sky_t sky = {.sun = 20.0f, .clouds = 30.0f, .press = 1015.0f, .trend = 0, .kp = 1.67f, .moon = 0.4f,
                     .hz = {110.0f, 164.81f}, .linked = 1, .planet = PL_NONE, .on = 1};
@@ -350,6 +354,7 @@ static void defaults(void)
     set.kp = 1.67f;
     set.sun = 20.0f;
     set.moon = 0.4f;
+    set.drone = 20;
 }
 static void save(void)
 {
@@ -367,9 +372,12 @@ static void save(void)
 
 void app_init(void)
 {
-    if (plat_store_load(OBJ_SETTINGS, &set, sizeof set) != (int)sizeof set || set.magic != SET_MAGIC
+    int n = plat_store_load(OBJ_SETTINGS, &set, sizeof set);
+    if (n == (int)SET_OLD_SIZE)          /* saved by 0.18 or before: the drone at its full level */
+        set.drone = 20;
+    if ((n != (int)sizeof set && n != (int)SET_OLD_SIZE) || set.magic != SET_MAGIC
         || set.lat100 < -9000 || set.lat100 > 9000 || set.lon100 < -18000 || set.lon100 > 18000 || set.octave < 1
-        || set.octave > 4 || set.pc[0] > 11 || set.pc[1] > 11 || set.tuning > 2)
+        || set.octave > 4 || set.pc[0] > 11 || set.pc[1] > 11 || set.tuning > 2 || set.drone > 20)
         defaults();
     clock_set(set.unix_saved);           /* the clock goes on from where it was saved */
 #ifdef PLAT_WEB
@@ -1506,6 +1514,14 @@ static void input(void)
             settings_change(ep > 0 ? 1 : -1, 1);
         return;
     }
+    if (ep) {                            /* PRESETS: the drone's level, always */
+        char v[8];
+        int32_t d = (int32_t)set.drone + (ep > 0 ? 1 : -1);
+        set.drone = (uint8_t)(d < 0 ? 0 : d > 20 ? 20 : d);
+        put(put_int(v, (int32_t)set.drone * 5), "%");
+        app_say("DRONE", v);
+        ui.dirty = 1;
+    }
     if (set.manual) {                    /* EDIT: the knobs are the sky */
         if (e1) sky.sun = fm_clampf(sky.sun + (float)e1 * 2.0f, -40.0f, 72.0f);
         if (e2) sky.clouds = fm_clampf(sky.clouds + (float)e2 * 3.0f, 0.0f, 100.0f);
@@ -1515,12 +1531,12 @@ static void input(void)
             sky.moon += (float)ea * 0.01f;
             sky.moon -= fm_floorf(sky.moon);
         }
-        if (ep) sky.trend = (int32_t)fm_clampf((float)(sky.trend + (ep > 0 ? 1 : -1)), -1.0f, 1.0f);
-        if (e1 || e2 || e3 || e4 || ea || ep) {
+        if (e3) sky.trend = e3 > 0 ? 1 : -1;   /* the trend: the way the pressure was turned */
+        if (e1 || e2 || e3 || e4 || ea) {
             ui.dirty = 1;
             ui.last_sky = 0;             /* what shows follows at once */
         }
-    } else if (e1 || e2 || e3 || e4 || ea || ep) {
+    } else if (e1 || e2 || e3 || e4 || ea) {
         app_say("NATURE", "EDIT TO CHANGE");
     }
     if (down >> B_SEL & 1u || es) {      /* the next planet up (in EDIT any of the seven), or none */
@@ -1627,6 +1643,7 @@ void app_frame(void)
     sky.drone_on[0] = !ui.splash_on && (sky.on || now < ui.key_until);   /* after the splash; stopped, a key still
                                                                          * plays */
     sky.drone_on[1] = sky.drone_on[0];
+    sky.drone_level = (float)set.drone / 20.0f;
     eng_sky(&sky);
     arp_tick();
     lights();

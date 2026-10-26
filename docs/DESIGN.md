@@ -155,7 +155,8 @@ With WiFi off (REC on the WiFi page), or no network in range:
 | --- | --- |
 | **HOME** | back to nature, at once: the sun and the moon as they are, the weather as it is now (nature's weather goes on while EDIT has the knobs) (over WiFi; offline, or with no news for three hours, drifting by itself). The readings' last line says how old it is |
 | **ENV** | the WiFi page (above), and back; lit bright while the weather is the network's |
-| **EDIT** | everything by hand, the readings held on the screen: K1 the sun's height, K2 the clouds, K3 the pressure, K4 Kp, ALGO the moon's cycle, PRESET the pressure's trend |
+| **EDIT** | everything by hand, the readings held on the screen: K1 the sun's height, K2 the clouds, K3 the pressure (its trend: the way it was turned), K4 Kp, ALGO the moon's cycle |
+| **PRESETS** | the drone's level, in HOME and in EDIT: 0 to 100 % in steps of 5, kept with the settings |
 | **SEL** | the next planet up (in EDIT any of the seven classical ones), or none |
 | **LFO** | the sky alone (a button or a knob brings the readings back for two seconds; the keys only play), and back |
 | **ARP** | the ARP screen: the sky, the arpeggiator on, its line, what it plays lighting up; again: off, and back |

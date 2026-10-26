@@ -103,7 +103,8 @@ void sky_map(const sky_t *s, sky_map_t *m)
 /* ------------------------------------------------------------------ the state --- */
 static volatile sky_map_t target;        /* the main loop writes, the render reads (word-sized fields) */
 static volatile int32_t target_on, target_don[2], target_engine, target_chord;   /* chord: the partners are a chord's tones */
-static volatile int32_t target_voice, target_rhythm;   /* the star voice; 0 none, 1 STARGATE, 2 PULSAR */
+static volatile int32_t target_voice, target_rhythm;
+static volatile float target_dlevel = 1.0f;   /* the drone's level */   /* the star voice; 0 none, 1 STARGATE, 2 PULSAR */
 static volatile float target_notes[NCHORD];   /* the instrument's chord, Hz (0: none) */
 static volatile uint32_t target_chord_n;      /* a new chord: it changes */
 static int16_t *dly, *ap_line[4], *rv_line[4], *ch_line;
@@ -133,7 +134,7 @@ typedef struct {                         /* a drone */
 
 static struct {                          /* where the render is: each glides to the target */
     float pr[2], beat, cutoff, q, sub, verb, delay, feedback, noise, dry, drift, storm, level, gate[2];
-    float chr, vadd, shim, shph, lit;    /* the pad's chorus and reverb, AURORA's shimmer and its grain phase */
+    float chr, vadd, shim, shph, lit, dlevel;    /* the pad's chorus and reverb, AURORA's shimmer and its grain phase */
     engine_t eng;                        /* the drone's */
     drone_t d[2];
     uint32_t phR, phW, phC;              /* the ring's oscillator; the tape's wow; the chorus's sway */
@@ -201,6 +202,7 @@ void eng_sky(const sky_t *s)
     target_engine = s->engine >= 0 && s->engine < ENG_N ? s->engine : 0;
     target_voice = s->voice >= 0 && s->voice < NVOICE ? s->voice : 0;
     target_rhythm = s->rhythm;
+    target_dlevel = s->drone_level;
     target.lit = m.lit;
     {
         int32_t k;
@@ -362,6 +364,7 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
     e.chr = glide(e.chr, PAD[target_engine].chorus, 0.003f);
     e.vadd = glide(e.vadd, PAD[target_engine].verb, 0.003f);
     e.lit = glide(e.lit, target.lit, 0.002f);
+    e.dlevel = glide(e.dlevel, target_dlevel * target_dlevel, 0.02f);   /* squared: the knob feels even */
     e.shim = glide(e.shim, target_engine == P_AURORA ? 0.30f + 0.35f * e.drift + 0.15f * e.lit : 0.0f, 0.002f);
     incR = (e.d[0].hz * 2.71f + 3.0f) * TO32;
     incW = 0.37f * TO32;
@@ -393,7 +396,7 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
         e.p1 = 0.96300f * e.p1 + white * 0.2965164f;
         e.p2 = 0.57000f * e.p2 + white * 1.0526913f;
         nzA = (e.p0 + e.p1 + e.p2 + white * 0.1848f) * 0.18f * nzl;
-        a = drone_tick(&e.d[0], idx, ol, 0u, nzA, brA, plv, slv) * e.gate[0] * 0.55f;   /* the drone, under */
+        a = drone_tick(&e.d[0], idx, ol, 0u, nzA, brA, plv, slv) * e.gate[0] * 0.55f * e.dlevel;   /* the drone, under */
         e.phR += (uint32_t)incR;
         ro = wt(SINE, e.phR);
         a = a * dry_amp + a * ro * ring;

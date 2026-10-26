@@ -37,6 +37,7 @@ typedef struct {
     float notes[NCHORD];                 /* the chord it plays, Hz (0: a note left out) */
     uint32_t chord_n;                    /* changed: a new chord, attacked anew (the same notes: held on) */
     int32_t on;                          /* the sky plays: the drones and the planet's voice (they fade in and out) */
+    float drone_level;                   /* the drone's level, 0..1 (PRESETS) */
     int32_t drone_on[2];                 /* [0] the drone, [1] the instrument: the sky's, or a key's while it is stopped */
 } sky_t;
 
