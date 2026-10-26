@@ -132,7 +132,7 @@ button.on { background: var(--moon); color: var(--night); border-color: var(--mo
       <div class="head" style="justify-content:flex-start"><span class="seg" id="trend" aria-label="Pressure trend">
         <button type="button" data-t="-1">↓ FALLING</button><button type="button" data-t="0" class="on">→ STEADY</button><button type="button" data-t="1">↑ RISING</button>
       </span></div>
-      <p class="does">The harmony: <b id="pressd">P5</b> between the drones. High is consonant, a fall brings tension, a storm clusters.</p>
+      <p class="does">The harmony: <b id="pressd">P5</b> between the two drones (left and right). High is consonant, a fall brings tension, a storm clusters.</p>
     </div>
     <div class="src" id="kprow">
       <span class="pace">hours, storms rare</span>
@@ -274,7 +274,10 @@ function build() {
   n.mix = g(1);
   n.oscA = ac.createOscillator(); n.oscB = ac.createOscillator(); n.sub = ac.createOscillator(); n.sub.type = "sine";
   n.gA = g(0.30); n.gB = g(0.26); n.gSub = g(0);
-  n.oscA.connect(n.gA).connect(n.mix); n.oscB.connect(n.gB).connect(n.mix); n.sub.connect(n.gSub).connect(n.mix);
+  /* the two drones apart in the stereo field, so a consonant interval still sounds like two voices */
+  n.pA = ac.createStereoPanner(); n.pA.pan.value = -0.55; n.pB = ac.createStereoPanner(); n.pB.pan.value = 0.55;
+  n.oscA.connect(n.gA).connect(n.pA).connect(n.mix); n.oscB.connect(n.gB).connect(n.pB).connect(n.mix);
+  n.sub.connect(n.gSub).connect(n.mix);
   n.fm = g(0); n.oscA.connect(n.fm).connect(n.oscB.frequency);              /* cross-modulation: A bends B */
   n.noise = ac.createBufferSource(); n.noise.buffer = noiseBuffer(3); n.noise.loop = true;
   n.nbp = ac.createBiquadFilter(); n.nbp.type = "bandpass"; n.nbp.frequency.value = 900; n.nbp.Q.value = 0.7;

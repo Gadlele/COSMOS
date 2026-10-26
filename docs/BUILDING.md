@@ -38,8 +38,9 @@ From the command line:
 python3 base/tools/fm1_install.py probe/build/probe.fwsc
 ```
 
-Or from the browser: `tools/make_install.py probe probe/build/probe-0.1.fwsc 0.1 OUT` makes the install site, and
-the `gh-pages` branch serves it at <https://gadlele.github.io/COSMOS/install/>.
+Or from the browser: `tools/make_pages.py probe probe/build/probe-0.1.fwsc 0.1 OUT` puts the site together (the
+project page from `web/site`, the installer, the sound in the browser at `try/`), and the `gh-pages` branch serves it
+at <https://gadlele.github.io/COSMOS/>.
 
 Installing firmware is at your own risk. Hold OCT− and OCT+ for 5 seconds for the update mode; the installer page
 also puts M-VAVE's own firmware back.
