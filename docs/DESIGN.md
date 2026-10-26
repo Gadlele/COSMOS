@@ -30,8 +30,8 @@ No presets, no scenes: the sound moves continuously, never jumps.
 ## Planets: engines and voices
 
 A planet on the screen can be chosen (SELECT). It changes the drones' engine and adds a rhythmic voice whose pulse
-comes from its orbit (2.2 s times the square root of the orbit in years). Until the sky is computed (stage 2), every
-planet can be chosen; then only those drawn on the screen.
+comes from its orbit (2.2 s times the square root of the orbit in years). Only a planet drawn on the screen can be chosen;
+when it sets or the sky hides it, its engine and its voice go.
 
 | Planet | Engine | Voice | Pulse |
 | --- | --- | --- | --- |
@@ -87,7 +87,8 @@ For players who do not want to connect it:
 ## Controls
 
 - **Keys:** the left half drone 1's note, the right half drone 2's
-- **SELECT:** the planet (its engine and its voice)
+- **SELECT:** a planet on the screen (its engine and its voice)
+- **HOME:** the settings: city, date, time (local, with summer time), weather (MANUAL or RANDOM)
 - **SEL:** the pressure in the harmony, or not
 - **SKY knob:** how much the sky drives the sound, 0 (manual) to 100 (all sky)
 - **Volume**

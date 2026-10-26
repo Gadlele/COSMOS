@@ -16,5 +16,9 @@ from <https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK>.
 
 ## Data
 
+The stars (`cosmos/data/stars.csv`) are the 500 brightest of the Yale Bright Star Catalogue, 5th edition (Hoffleit
+and Warren, 1991), public domain. The planets' orbits are JPL's approximate Keplerian elements (Standish).
+
+
 The weather comes from [Open-Meteo](https://open-meteo.com) (CC BY 4.0), the Kp index from the NOAA Space Weather
 Prediction Center (public domain).
