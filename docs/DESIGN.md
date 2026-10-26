@@ -107,4 +107,4 @@ See `tools/sky_preview.py` and `docs/img/`.
 
 ## Open questions
 
-- Delay length: depends on the free heap with WiFi (MEMORY.md)
+- Delay length: ~125 KB for the sound measured on the FM-1 (MEMORY.md): up to 1 s stereo beside the reverb

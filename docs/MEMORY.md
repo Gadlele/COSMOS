@@ -47,3 +47,20 @@ heap (`malloc`, 272 KB in all, shared with the WiFi library's buffers and task s
 | Noise | ~0 |
 
 How much heap is free with WiFi connected can only be measured on the FM-1: COSMOS PROBE (`probe/`) shows it.
+
+## Measured on the FM-1 (PROBE 0.1, 26 Oct 2026)
+
+Connected at -85 dBm (a weak signal), both requests answered over HTTPS, the longest handshake 386 ms.
+
+| | KB |
+| --- | --- |
+| WiFi heap, in all | 272 |
+| In use at rest, connected | 92 |
+| In use at the fetch's peak (two HTTPS requests) | 121 |
+| Biggest free block at rest | 176 |
+| Delay + reverb (44 + 37) allocated beside WiFi | fit |
+
+So a fetch takes about 29 KB more than rest, and COSMOS can keep about 151 KB of buffers for good (272 − 121)
+and still fetch. With ~25 KB kept spare, **~125 KB for the sound**: the delay can grow from 0.5 s to about 1 s stereo
+(88 KB) beside the reverb (37 KB), or stay at 0.75 s (66 KB) and leave room for a bigger reverb. The buffers are
+allocated once at start, before the first fetch, so the fetch takes what is left.
