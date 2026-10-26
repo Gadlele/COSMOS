@@ -11,13 +11,19 @@
 
 ## Sound engine
 
-- Two drones (oscillators always on), each detuned against the other
-- Sub oscillator
-- Resonant filter
-- Reverb
-- Delay (short, or longer if the heap allows: see MEMORY.md)
-- Noise
-- Ring modulation and cross-modulation, for geomagnetic storms
+Each drone is a small instrument of its own:
+
+- a main oscillator in the moon's character (four wavetables, blended around the cycle)
+- a partner an octave up, a few cents off, so the two beat; tension beats faster
+- a sub an octave down, and pink noise
+- all driven (a soft saturation) into the drone's own resonant filter
+- breathing: each drone swells at its own slow rate
+
+Drone A sits a little left, drone B a little right; in a storm A bends B's phase (cross-modulation) and both are
+ring-modulated. Nothing is ever still: each drone's pitch, cutoff, level and partner detune wander on their own,
+further with Kp. Then a 0.4 s ping-pong delay whose read wanders like tape, a warm drive over the sound and its
+echoes together, and a reverb: four all-passes diffuse the input into four long lines (68 to 105 ms) mixed by a
+Hadamard matrix, longer under clouds. The delay and the reverb take 103 KB of the WiFi heap.
 
 No presets, no scenes: the sound moves continuously, never jumps.
 
