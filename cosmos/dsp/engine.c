@@ -111,7 +111,7 @@ void sky_map(const sky_t *s, sky_map_t *m)
 
 /* ------------------------------------------------------------------ the state --- */
 static volatile sky_map_t target;        /* the main loop writes, the render reads (word-sized fields) */
-static volatile int32_t target_on, target_planet, target_chord;   /* chord: the partners are a chord's tones */
+static volatile int32_t target_on, target_don[2], target_planet, target_chord;   /* chord: the partners are a chord's tones */
 static volatile int8_t target_scale[7];
 static volatile float target_root;
 static int16_t *dly, *ap_line[4], *rv_line[4];
@@ -135,7 +135,7 @@ typedef struct {                         /* a struck partial of a planet's voice
 } ping_t;
 
 static struct {                          /* where the render is: each glides to the target */
-    float pr[2], beat, cutoff, q, sub, morph, verb, delay, feedback, noise, dry, drift, storm, level;
+    float pr[2], beat, cutoff, q, sub, morph, verb, delay, feedback, noise, dry, drift, storm, level, gate[2];
     engine_t eng;                        /* the planet's engine, gliding */
     drone_t d[2];
     uint32_t phR, phW;                   /* the ring's oscillator; the tape's wow */
@@ -201,6 +201,8 @@ void eng_sky(const sky_t *s)
     target.storm = m.storm;
     target_planet = s->planet > 0 && s->planet < PL_N ? s->planet : PL_NONE;
     target_on = s->on;
+    target_don[0] = s->drone_on[0];
+    target_don[1] = s->drone_on[1];
 }
 
 static inline uint32_t xs(void)
@@ -374,7 +376,7 @@ static inline float drone_tick(drone_t *d, int32_t m0, int32_t m1, float w1, flo
 void eng_render(int32_t *lr, uint32_t n, float gain)
 {
     uint32_t i;
-    float incR, incW, fmd, ring, dry_amp, lvl_to, lvl_k, drv, brA, brB, decay, plv, slv, nzl, sn, verb;
+    float incR, incW, fmd, ring, dry_amp, to0, to1, k0, k1, drv, brA, brB, decay, plv, slv, nzl, sn, verb;
     int32_t m0, m1;
     float mw;
     if (!dly) {                          /* no lines (no heap): silence */
@@ -464,13 +466,17 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
     /* each drone breathes: up to a quarter quieter at the bottom of its swell */
     brA = 1.0f - 0.22f * (0.5f - 0.5f * fm_cosf(FM_TWO_PI * e.d[0].breath));
     brB = 1.0f - 0.22f * (0.5f - 0.5f * fm_cosf(FM_TWO_PI * e.d[1].breath));
-    lvl_to = target_on ? 1.0f : 0.0f;
-    lvl_k = target_on ? 0.00004f : 0.00008f;  /* ~0.6 s in, ~0.3 s out */
+    to0 = target_don[0] ? 1.0f : 0.0f;  /* each drone fades in over ~0.6 s, out over ~0.3 s */
+    to1 = target_don[1] ? 1.0f : 0.0f;
+    k0 = to0 > e.gate[0] ? 0.00004f : 0.00008f;
+    k1 = to1 > e.gate[1] ? 0.00004f : 0.00008f;
     gain *= 8300000.0f * 0.3f;
     for (i = 0; i < n; i++) {
         float white, nzA, nzB, a, b, l, r, ro, dL, dR, rin, o[4], y[4], outL, outR, pos, fr, v = 0.0f;
         uint32_t j, pm, ri, rj;
-        e.level += (lvl_to - e.level) * lvl_k;
+        e.gate[0] += (to0 - e.gate[0]) * k0;
+        e.gate[1] += (to1 - e.gate[1]) * k1;
+        e.level += ((target_on ? 1.0f : 0.0f) - e.level) * 0.00008f;   /* the planet's voice */
         /* pink noise, a little different in each drone */
         white = (float)(int32_t)xs() * (1.0f / 2147483648.0f);
         e.p0 = 0.99765f * e.p0 + white * 0.0990460f;
@@ -482,8 +488,10 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
         pm = (uint32_t)(int32_t)(a * fmd * 4294967296.0f);   /* the storm: A bends B */
         b = drone_tick(&e.d[1], m0, m1, mw, sn, pm, nzB, drv, brB, plv, slv);
         /* A a little left, B a little right */
-        l = (a * 0.80f + b * 0.40f) * e.level;
-        r = (a * 0.40f + b * 0.80f) * e.level;
+        a *= e.gate[0];
+        b *= e.gate[1];
+        l = a * 0.80f + b * 0.40f;
+        r = a * 0.40f + b * 0.80f;
         e.phR += (uint32_t)incR;
         ro = wt(SINE, e.phR);
         l = l * dry_amp + l * ro * ring;

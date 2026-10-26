@@ -25,7 +25,8 @@ typedef struct {
     float root_hz;                       /* the scale's root */
     int32_t linked;                      /* the pressure sets the partners' interval (else an octave) */
     int32_t planet;                      /* PL_*: the engine and the rhythmic voice */
-    int32_t on;                          /* the drones sound (they fade in and out) */
+    int32_t on;                          /* the sky plays: the drones and the planet's voice (they fade in and out) */
+    int32_t drone_on[2];                 /* each drone sounds: the sky's, or a key's while the sky is stopped */
 } sky_t;
 
 /* what the sky does to the sound: the targets, also what the screen shows */

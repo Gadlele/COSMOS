@@ -13,11 +13,14 @@
  *   HOME the settings
  * THE HARMONY. With no planet, the keyboard's left half (F3..F#4) sets drone 1's note and its right half (G4..G5)
  * drone 2's, freely. A chosen planet brings its note (its period raised by octaves into hearing: Cousto's cosmic
- * octave, exact under TUNING COSMIC, the nearest tempered note under EQUAL), a scale in the mode the sun's height
+ * octave, exact under TUNING COSMIC, the nearest tempered note under EQUAL; under NATURAL a natural note each, the
+ * spheres' classical order from the Moon's C to Saturn's B), a scale in the mode the sun's height
  * gives (Phrygian at night .. Lydian at noon), and four chords of its own on that scale, one every 10 s: drone 1 the
  * chord's root, its partner the fifth, drone 2 the third, its partner coloured by the pressure (the octave high and
  * steady, the seventh as it falls, a suspension and the ninth deep down). The keys then play the scale only: a key
  * moves its drone to the nearest note of the scale while held and for 10 s after, then the chords go on.
+ * PLAY stops the sky (the drones and the planet's voice fade out); the keys still play: a key makes its drone sound
+ * while held and for 10 s after.
  * THE SETTINGS: latitude, longitude, the offset from UTC, summer time, the date and the time (local), the weather, the
  * tuning. SELECT picks a row, ALGO changes it a step, PRESET a big step, HOME saves and goes back. Without WiFi
  * (stage 3) the clock runs from the time set here.
@@ -49,7 +52,7 @@ static struct {                          /* kept in the store (OBJ_SETTINGS) */
     int16_t lat100, lon100;              /* the place: hundredths of a degree, north and east positive */
     int8_t utc4;                         /* the offset from UTC, quarter hours */
     uint8_t summer, weather, linked;     /* summer time; weather 0 MANUAL, 1 RANDOM; the pressure in the harmony */
-    uint8_t octave, tuning;              /* tuning 0 COSMIC, 1 EQUAL */
+    uint8_t octave, tuning;              /* tuning 0 COSMIC, 1 EQUAL, 2 NATURAL */
     uint8_t pc[2];                       /* the drones' notes with no planet: pitch classes */
     int8_t trend, pad[3];
     float clouds, press, kp;
@@ -112,6 +115,9 @@ static int32_t utc_offset_s(void) { return (int32_t)set.utc4 * 900 + (set.summer
  * the Sun, the synodic month for the Moon, each planet's orbit; and the nearest tempered note (MIDI) */
 static const float COSMIC_HZ[PL_N] = {0.0f, 126.22f, 210.42f, 141.27f, 221.23f, 144.72f, 183.58f, 147.85f};
 static const int8_t EQUAL_NOTE[PL_N] = {0, 47, 56, 49, 57, 50, 54, 50};   /* B2 G#3 C#3 A3 D3 F#3 D3 */
+/* a natural note each, in the spheres' classical order outward: Moon C, Mercury D, Venus E, Sun F, Mars G, Jupiter A,
+ * Saturn B */
+static const int8_t NATURAL_NOTE[PL_N] = {0, 53, 48, 50, 52, 55, 57, 59};
 /* the modes from dark to bright, as the sun climbs */
 static const int8_t MODES[6][7] = {
     {0, 1, 3, 5, 7, 8, 10},              /* Phrygian: deep night */
@@ -142,7 +148,8 @@ static float ratio(int32_t s) { return fm_exp2f((float)s / 12.0f); }
 /* the planet's root, in the drones' octave (C of the octave up to the next C) */
 static float root_hz(int32_t p)
 {
-    float f = set.tuning ? 440.0f * fm_exp2f((float)(EQUAL_NOTE[p] - 69) / 12.0f) : COSMIC_HZ[p];
+    float f = set.tuning == 0 ? COSMIC_HZ[p]
+              : 440.0f * fm_exp2f((float)((set.tuning == 1 ? EQUAL_NOTE[p] : NATURAL_NOTE[p]) - 69) / 12.0f);
     float lo = 65.406f * fm_exp2f((float)(set.octave - 2));
     while (f >= 2.0f * lo)
         f *= 0.5f;
@@ -249,7 +256,7 @@ void app_init(void)
 {
     if (plat_store_load(OBJ_SETTINGS, &set, sizeof set) != (int)sizeof set || set.magic != SET_MAGIC
         || set.lat100 < -9000 || set.lat100 > 9000 || set.lon100 < -18000 || set.lon100 > 18000 || set.octave < 1
-        || set.octave > 4 || set.pc[0] > 11 || set.pc[1] > 11)
+        || set.octave > 4 || set.pc[0] > 11 || set.pc[1] > 11 || set.tuning > 2)
         defaults();
     clock_set(set.unix_saved);           /* the clock goes on from where it was saved */
     sky.clouds = set.clouds;
@@ -711,7 +718,7 @@ static void settings_frame(void)
                 copy(v, set.weather ? "RANDOM" : "MANUAL", 24);
                 break;
             default:
-                copy(v, set.tuning ? "EQUAL" : "COSMIC", 24);
+                copy(v, set.tuning == 0 ? "COSMIC" : set.tuning == 1 ? "EQUAL" : "NATURAL", 24);
                 break;
             }
             copy(l, r == ui.row ? "> " : "  ", 24);
@@ -779,7 +786,7 @@ static void settings_change(int32_t step, int big)
         set.weather = !set.weather;
         break;
     default:
-        set.tuning = !set.tuning;
+        set.tuning = (uint8_t)((set.tuning + 3 + (step > 0 ? 1 : -1)) % 3);
         break;
     }
     ui.dirty = 1;
@@ -850,11 +857,13 @@ static void input(void)
         sky.on = !sky.on;
     for (k = 0; k < NKEYS; k++) {
         int half = k >= SPLIT_KEY;
-        if (sky.planet == PL_NONE) {     /* free notes */
+        if (sky.planet == PL_NONE) {     /* free notes; with the sky stopped, the key sounds its drone a while */
             if (kdown >> k & 1u) {
                 set.pc[half] = (uint8_t)((FIRST_KEY_NOTE + k) % 12);
                 ui.dirty = 1;
             }
+            if (keys >> k & 1u)
+                ui.key_until[half] = now + KEY_HOLD_MS;
         } else if (keys >> k & 1u) {     /* the scale only: held, and 10 s after */
             ui.key_deg[half] = key_degree(FIRST_KEY_NOTE + k, root_hz(sky.planet));
             ui.key_until[half] = now + KEY_HOLD_MS;
@@ -883,6 +892,8 @@ void app_frame(void)
         ui.last_weather = now;
     }
     harmony();                           /* the chords move on their own: every frame */
+    sky.drone_on[0] = sky.on || now < ui.key_until[0];   /* stopped, the keys still play */
+    sky.drone_on[1] = sky.on || now < ui.key_until[1];
     eng_sky(&sky);
     if (ui.dirty && ui.screen == 0 && now - ui.touched > 10000u)   /* settings: saved once the hands are off */
         save();

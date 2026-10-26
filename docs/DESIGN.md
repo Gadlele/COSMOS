@@ -34,7 +34,8 @@ screen; when one sets or the sky hides it, it goes. A planet brings four things:
 
 - **Its note**: its period raised by octaves into hearing (Hans Cousto's cosmic octave): the Earth's year for the Sun,
   the synodic month for the Moon, each planet's orbit. TUNING COSMIC plays the exact frequency, EQUAL the nearest
-  tempered note.
+  tempered note, NATURAL a natural note each, in the spheres' classical order outward (Moon C, Mercury D, Venus E,
+  Sun F, Mars G, Jupiter A, Saturn B).
 - **Four chords** on that note, one every 10 s, in the mode the sun's height gives: Phrygian below -18 degrees,
   Aeolian to -6, Dorian to the horizon, Mixolydian to 12, Ionian to 30, Lydian above. Drone 1 plays the chord's root,
   its partner the fifth; drone 2 the third, its partner coloured by the pressure (the octave when high and steady, the
@@ -42,15 +43,15 @@ screen; when one sets or the sky hides it, it goes. A planet brings four things:
 - **Its engine** for the drones, gliding in over two seconds.
 - **Its rhythmic voice**, pulsing with its period (2.2 s times the square root of the period in years), in the scale.
 
-| Planet | Note (cosmic) | Chords (degrees) | Engine | Voice | Pulse |
-| --- | --- | --- | --- | --- | --- |
-| Sun | 126.22 Hz (B) | I V VI IV | radiant, open | FLARE: a soft bright chord flaring high | 2.2 s |
-| Moon | 210.42 Hz (G#) | I VI III IV | silver, singing | RIPPLE: tiny glassy drops wandering the scale | 0.6 s |
-| Mercury | 141.27 Hz (C#) | I II IV V | thin and bright | GLINT: quick high sparks up the chord | 1.1 s |
-| Venus | 221.23 Hz (A) | I IV VI V | sweet, glass | BELLS: FM bells walking the scale as a star | 1.7 s |
-| Mars | 144.72 Hz (D) | I VII VI V | raw, driven | PULSE: a low double beat, a heartbeat | 3.0 s |
-| Jupiter | 183.58 Hz (F#) | I IV II V | deep and warm | SWELL: a sub below the sub, breathing | 7.6 s |
-| Saturn | 147.85 Hz (D) | I III VII VI | metallic, ringed | RINGS: an inharmonic chime with a long tail | 11.9 s |
+| Planet | Note (cosmic) | Natural | Chords (degrees) | Engine | Voice | Pulse |
+| --- | --- | --- | --- | --- | --- | --- |
+| Sun | 126.22 Hz (B) | F | I V VI IV | radiant, open | FLARE: a soft bright chord flaring high | 2.2 s |
+| Moon | 210.42 Hz (G#) | C | I VI III IV | silver, singing | RIPPLE: tiny glassy drops wandering the scale | 0.6 s |
+| Mercury | 141.27 Hz (C#) | D | I II IV V | thin and bright | GLINT: quick high sparks up the chord | 1.1 s |
+| Venus | 221.23 Hz (A) | E | I IV VI V | sweet, glass | BELLS: FM bells walking the scale as a star | 1.7 s |
+| Mars | 144.72 Hz (D) | G | I VII VI V | raw, driven | PULSE: a low double beat, a heartbeat | 3.0 s |
+| Jupiter | 183.58 Hz (F#) | A | I IV II V | deep and warm | SWELL: a sub below the sub, breathing | 7.6 s |
+| Saturn | 147.85 Hz (D) | B | I III VII VI | metallic, ringed | RINGS: an inharmonic chime with a long tail | 11.9 s |
 
 ## Notes
 
@@ -58,6 +59,9 @@ With no planet, the keyboard is split: the left half (F3..F#4) sets drone 1's no
 2's, freely; each partner sits at the pressure's interval (or an octave when SEL leaves the pressure out). With a
 planet, the keys play its scale only: a key moves its drone to the nearest note of the scale while it is held and for
 10 s after it is let go, then the chords go on. OCT- and OCT+ move everything an octave.
+
+PLAY stops the sky: the drones and the planet's voice fade out. The keys still play: a key makes its drone sound
+(left half drone 1, right half drone 2) while it is held and for 10 s after, then fades it out.
 
 ## Sources and what they do
 
@@ -98,7 +102,7 @@ For players who do not want to connect it:
 - **Keys:** with no planet, the left half drone 1's note and the right half drone 2's; with one, its scale
 - **SELECT:** a planet on the screen (its note, its chords, its engine, its voice)
 - **HOME:** the settings: latitude, longitude, UTC offset, summer time, date, time (local), weather (MANUAL or
-  RANDOM), tuning (COSMIC or EQUAL)
+  RANDOM), tuning (COSMIC, EQUAL or NATURAL)
 - **SEL:** the pressure in the harmony, or not
 - **SKY knob:** how much the sky drives the sound, 0 (manual) to 100 (all sky)
 - **Volume**
