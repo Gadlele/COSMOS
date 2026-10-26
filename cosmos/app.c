@@ -115,7 +115,9 @@ static struct {
     int pick;                            /* WiFi: the network picked in the list */
     char ssid[33], pass[64];             /* the one being joined, its password as typed */
     int plen, ch;                        /* the password's length, the character SELECT is on */
-    uint32_t splash_t0;                  /* the splash running since (plat_ms; 0: over) */
+    uint32_t splash_t0;                  /* the splash running since its first frame (plat_ms; 0: over) */
+    int splash_on;                       /* the splash still to run or running */
+    uint32_t splash_btn;                 /* the buttons held at its start: only a new press cuts it */
 } ui = {.rnd = 0x2545F491u};
 
 static uint32_t unix_now(void) { return ui.clock_unix + (plat_ms() - ui.clock_ms) / 1000u; }
@@ -1442,19 +1444,30 @@ void app_input_only(void) { input(); }
 void app_ui_init(void)
 {
     lcd_fill(0, 0, 240, 240, C_BLACK);
-    ui.splash_t0 = plat_ms() | 1u;       /* the stars gather first */
-    if (!set.offline)
-        plat_wifi_on(1);                 /* it joins the networks kept; the weather follows (net_tick) */
+    ui.splash_on = 1;                    /* the stars gather first; WiFi starts after them (its start holds the
+                                          * loop and the panel's scan for a second) */
+    ui.splash_t0 = 0;
     ui.touched = plat_ms();              /* the readings show at the start */
 }
 
 void app_frame(void)
 {
     uint32_t now = plat_ms();
-    if (ui.splash_t0 && (now - ui.splash_t0 >= SPLASH_MS || plat_buttons() || plat_keys())) {   /* over, or cut */
-        ui.splash_t0 = 0;
-        ui.touched = now;
-        lcd_fill(0, 0, 240, 240, C_BLACK);
+    if (ui.splash_on) {                  /* the splash: timed from its first frame; a new press cuts it */
+        uint32_t b = plat_buttons();
+        if (!ui.splash_t0) {
+            ui.splash_t0 = now | 1u;
+            ui.splash_btn = b;
+            ui.last_frame = now - 50u;
+        }
+        ui.splash_btn &= b;              /* a held button counts once let go and pressed again */
+        if (now - ui.splash_t0 >= SPLASH_MS || (now - ui.splash_t0 > 400u && (b & ~ui.splash_btn))) {
+            ui.splash_on = 0;
+            ui.touched = now;
+            lcd_fill(0, 0, 240, 240, C_BLACK);
+            if (!set.offline)
+                plat_wifi_on(1);         /* it joins the networks kept; the weather follows (net_tick) */
+        }
     }
     input();
     if (ui.last_sky == 0 || now - ui.last_sky > 2000u) {   /* the sky every 2 s: the stars move slowly */
@@ -1489,7 +1502,7 @@ void app_frame(void)
         if (ui.alpha < 0.01f && to == 0.0f)
             ui.alpha = 0.0f;
     }
-    if (ui.splash_t0) {                  /* the splash, 20 frames a second */
+    if (ui.splash_on) {                  /* the splash, 20 frames a second */
         if (now - ui.last_frame >= 50u) {
             ui.last_frame = now;
             splash_frame((float)(now - ui.splash_t0) / 1000.0f);
