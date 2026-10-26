@@ -37,6 +37,7 @@ typedef struct {
     int32_t trend10;                     /* its change over the last 3 hours, tenths of hPa */
     int32_t utc_s;                       /* the place's offset from UTC now, s (summer time in it); NET_NONE_S none */
     int32_t kp100;                       /* the latest Kp, hundredths; -1 none */
+    int32_t wcode;                       /* the weather's kind now, WMO code (0 clear .. 99 thunderstorm); -1 none */
     char date[40];                       /* the last server's Date header: the time */
     char why[32];                        /* what went wrong, or "" */
 } net_res_t;

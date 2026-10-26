@@ -18,16 +18,18 @@
  *   GLO    the settings      PLAY the sky stopped or playing (stopping saves)      OCT- / OCT+ the octave
  *   MASTER the volume. The buttons that do something glow, the ones in use bright; the keys glow on the scale,
  *   bright on its root. Saving silences the sound for a moment: only stopping (PLAY) and leaving GLO save.
- * THE HARMONY. Always a chord, a seventh of the scale: the drone holds its root and fifth, sliding to the next in
- * 1.5 s; the instrument on top plays the four notes an octave up and attacks each chord anew. The pressure picks the
- * instrument (the settings' INSTRUMENT can fix one): high, the organ; fair, strings; falling, the warm pad; low, the
- * choir. The mode is the sun's height's (Phrygian at night .. Lydian at noon). Four chords go round, one every 10 s:
+ * THE HARMONY. Always a chord, coloured by the pressure (the triad and its octave, the seventh, the suspended ninth):
+ * the drone holds its root and fifth, sliding to the next in 1.5 s; the pad on top plays the four notes an octave up
+ * and attacks each chord anew.
+ * THE SOUND. The pad is the weather's (its kind: the network's code, or guessed from the clouds and the pressure), by
+ * day or by night (choose_sound: PAD_DAY, PAD_NIGHT); the star voice is the moon's phase; the rhythm is Kp's (from 4
+ * STARGATE, from 5 PULSAR). The settings' PAD and STARS can fix them. The mode is the sun's height's (Phrygian at night .. Lydian at noon). Four chords go round, one every 10 s:
  * with no planet on the last key's note; a chosen planet brings its note (its period raised by octaves into hearing:
  * Cousto's cosmic octave, exact under TUNING COSMIC, the nearest tempered note under EQUAL; under NATURAL a natural
- * note each, the spheres' classical order from the Moon's C to Saturn's B) and four chords of its own on its scale; a key then plays the chord of the scale on its note, held and for 10 s after,
- * and the four come back. With the sky stopped, a key still sounds its chord, held and for 10 s after.
+ * note each, the spheres' classical order from the Moon's C to Saturn's B) and four chords of its own on its scale;
+ * a key then plays the chord of the scale on its note, held and for 10 s after, and the four come back. With the sky stopped, a key still sounds its chord, held and for 10 s after.
  * THE SETTINGS (GLO): latitude, longitude, the offset from UTC, summer time, the date and the time (local), the
- * instrument (AUTO: the pressure's), the tuning. SELECT picks a row, ALGO changes it a step, PRESET a big step, GLO or HOME
+ * pad (AUTO: the weather's), the star voice (AUTO: the moon's), the tuning. SELECT picks a row, ALGO changes it a step, PRESET a big step, GLO or HOME
  * saves and goes back. Without WiFi (stage 3) the clock runs from the time set here.
  * Part of the unity build (device/unity.c), after the platform: gfx.c is in scope. */
 #include "fastmath.h"
@@ -56,12 +58,13 @@ static struct {                          /* kept in the store (OBJ_SETTINGS) */
     uint32_t unix_saved;                 /* the clock when it was saved */
     int16_t lat100, lon100;              /* the place: hundredths of a degree, north and east positive */
     int8_t utc4;                         /* the offset from UTC, quarter hours */
-    uint8_t summer, manual, inst;        /* summer time; EDIT (else HOME: nature); the instrument: 0 or 1 the
-                                          * pressure's (AUTO), 2..5 one fixed (ORGAN, STRINGS, CHOIR, WARM PAD) */
+    uint8_t summer, manual, inst;        /* summer time; EDIT (else HOME: nature); the pad: 0 or 1 the weather's
+                                          * (AUTO), 2..16 one fixed (NEBULA .. STRINGS) */
     uint8_t octave, tuning;              /* tuning 0 COSMIC, 1 EQUAL, 2 NATURAL */
     uint8_t pc[2];                       /* with no planet, the chord's root: a pitch class ([1] unused) */
     int8_t trend;
-    uint8_t arp, offline, pad;           /* the arpeggiator on; WiFi off (0: on, fetching the weather) */
+    uint8_t arp, offline, stars;         /* the arpeggiator on; WiFi off (0: on, fetching the weather); the star voice:
+                                          * 0 the moon's (AUTO), 1..8 one fixed */
     float clouds, press, kp, sun, moon;  /* the sky by hand (EDIT) */
 } set;
 
@@ -71,7 +74,8 @@ static sky_t sky = {.sun = 20.0f, .clouds = 30.0f, .press = 1015.0f, .trend = 0,
 static struct {
     float clouds, press, kp;
     int32_t trend;
-} nat = {30.0f, 1015.0f, 1.67f, 0};
+    int32_t wcode;                       /* the network's weather code (WMO), -1 none */
+} nat = {30.0f, 1015.0f, 1.67f, 0, -1};
 
 static sky_now_t now_sky;                /* the last astro_now */
 static uint8_t star_x[NSTARS], star_y[NSTARS];   /* the stars on the screen (y 255: not up, or off the square) */
@@ -111,7 +115,7 @@ static struct {
     uint32_t net_try, net_at;            /* plat_ms of the last fetch asked, of the last that brought the weather (0 none) */
     int fetching, was_connected;
     float wx_cloud, wx_press, wx_kp;     /* what it brought: HOME glides there */
-    int32_t wx_trend;
+    int32_t wx_trend, wx_code;
     int pick;                            /* WiFi: the network picked in the list */
     char ssid[33], pass[64];             /* the one being joined, its password as typed */
     int plen, ch;                        /* the password's length, the character SELECT is on */
@@ -210,6 +214,81 @@ static int32_t key_degree(int32_t note, float root)
     return best;
 }
 
+/* the weather's kind: the network's code (WMO), or, offline and in EDIT, guessed from the clouds and the pressure */
+enum { W_CLEAR, W_PARTLY, W_OVERCAST, W_FOG, W_DRIZZLE, W_RAIN, W_SNOW, W_STORM, NWX };
+static const char *const W_NAME[NWX] = {"CLEAR", "PARTLY", "OVERCAST", "FOG", "DRIZZLE", "RAIN", "SNOW", "STORM"};
+/* its pad by day and by night (pads.c's order) */
+static const int8_t PAD_DAY[NWX] = {0 /* NEBULA */, 14 /* STRINGS */, 6 /* ORGAN */, 10 /* BACKGROUND */,
+                                    8 /* TAPE */, 12 /* CRYSTAL */, 3 /* SOLAR WIND */, 13 /* SUPERNOVA */};
+static const int8_t PAD_NIGHT[NWX] = {1 /* AURORA */, 5 /* QUASAR */, 7 /* VOYAGER */, 9 /* HORIZON */,
+                                      11 /* DEEP FIELD */, 2 /* RINGS */, 3 /* SOLAR WIND */, 4 /* GRAVITY */};
+static int32_t weather_of_code(int32_t c)
+{
+    if (c <= 1)
+        return W_CLEAR;
+    if (c == 2)
+        return W_PARTLY;
+    if (c == 3)
+        return W_OVERCAST;
+    if (c == 45 || c == 48)
+        return W_FOG;
+    if (c >= 51 && c <= 57)
+        return W_DRIZZLE;
+    if ((c >= 61 && c <= 67) || (c >= 80 && c <= 82))
+        return W_RAIN;
+    if ((c >= 71 && c <= 77) || c == 85 || c == 86)
+        return W_SNOW;
+    if (c >= 95)
+        return W_STORM;
+    return W_OVERCAST;
+}
+static int32_t weather_guess(float clouds, float press)
+{
+    if (clouds > 70.0f && press < 995.0f)
+        return W_STORM;
+    if (clouds > 70.0f && press < 1004.0f)
+        return W_RAIN;
+    if (clouds > 80.0f && press < 1009.0f)
+        return W_DRIZZLE;
+    if (clouds > 90.0f && press > 1020.0f)
+        return W_FOG;                    /* still, damp, high pressure: the fogs of an anticyclone */
+    if (clouds < 20.0f)
+        return W_CLEAR;
+    if (clouds < 55.0f)
+        return W_PARTLY;
+    return W_OVERCAST;
+}
+static int32_t weather_now(void)
+{
+    static int32_t prev = W_PARTLY;
+    int32_t a, b, c;
+    if (!set.manual && nat.wcode >= 0)
+        return prev = weather_of_code(nat.wcode);
+    a = weather_guess(sky.clouds, sky.press);   /* near an edge, the one there stays */
+    b = weather_guess(sky.clouds - 3.0f, sky.press - 1.5f);
+    c = weather_guess(sky.clouds + 3.0f, sky.press + 1.5f);
+    if (prev != b && prev != c)
+        prev = a;
+    return prev;
+}
+
+/* the pad (the weather's, by day or by night), the star voice (the moon's), the rhythm (Kp's): or the settings' */
+static void choose_sound(void)
+{
+    static int day = 1;
+    int32_t w = weather_now(), ph;
+    day = day ? sky.sun > -7.0f : sky.sun > -5.0f;   /* civil twilight, with a degree either way */
+    sky.engine = set.inst >= 2 && set.inst < 2 + ENG_N ? set.inst - 2 : (day ? PAD_DAY[w] : PAD_NIGHT[w]);
+    ph = (int32_t)((sky.moon - fm_floorf(sky.moon)) * 8.0f + 0.5f) & 7;   /* new, crescent, quarter, gibbous, full... */
+    sky.voice = set.stars >= 1 && set.stars <= NVOICE ? set.stars - 1 : ph;
+    if (sky.rhythm == R_PULSAR)          /* Kp: from 4 the sequence, from 5 the pulse; three tenths back to leave */
+        sky.rhythm = sky.kp >= 4.7f ? R_PULSAR : sky.kp >= 3.7f ? R_STARGATE : R_NONE;
+    else if (sky.rhythm == R_STARGATE)
+        sky.rhythm = sky.kp >= 5.0f ? R_PULSAR : sky.kp >= 3.7f ? R_STARGATE : R_NONE;
+    else
+        sky.rhythm = sky.kp >= 5.0f ? R_PULSAR : sky.kp >= 4.0f ? R_STARGATE : R_NONE;
+}
+
 /* what the drones play: a chord, on the last key's note with no planet; else the planet's four in turn, or a key's
  * chord of its scale */
 static void harmony(void)
@@ -225,10 +304,14 @@ static void harmony(void)
     sky.pr[0] = ratio(semis(d + 4) - semis(d));
     sky.hz[1] = sky.hz[0];
     sky.pr[1] = sky.pr[0];
-    {   /* the instrument: the seventh chord of the scale on the degree, an octave over the drone; a new one attacked */
+    {   /* the pad: the chord on the degree an octave over the drone, coloured by the pressure (high and steady: the
+         * triad and its octave; falling: the seventh; deep down: suspended, the ninth); a new one attacked */
+        static const int8_t COLOUR[3][NCHORD] = {{0, 2, 4, 7}, {0, 2, 4, 6}, {0, 3, 4, 8}};
+        float t = tension(&sky);
+        int32_t c = t < 0.3f ? 0 : t < 1.3f ? 1 : 2;
         int changed = 0;
         for (i = 0; i < NCHORD; i++) {
-            float f = root * 2.0f * ratio(semis(d + 2 * i));
+            float f = root * 2.0f * ratio(semis(d + COLOUR[c][i]));
             if (fm_fabsf(f - sky.notes[i]) > f * 0.001f)
                 changed = 1;
             sky.notes[i] = f;
@@ -236,20 +319,7 @@ static void harmony(void)
         if (changed)
             sky.chord_n++;
     }
-    {   /* the instrument: fixed, or the pressure's (1.5 hPa either way before it changes) */
-        static const float EDGE[3] = {1004.0f, 1012.0f, 1020.0f};   /* below: CHOIR, WARM PAD, STRINGS; above, ORGAN */
-        static const int8_t BAND[4] = {2, 3, 1, 0};
-        int32_t lo = 0, hi = 0, mid = 0;
-        for (i = 0; i < 3; i++) {
-            lo += sky.press - 1.5f >= EDGE[i];
-            hi += sky.press + 1.5f >= EDGE[i];
-            mid += sky.press >= EDGE[i];
-        }
-        if (set.inst >= 2 && set.inst <= 5)
-            sky.engine = set.inst - 2;
-        else if (sky.engine != BAND[lo] && sky.engine != BAND[hi])   /* near an edge, the one playing stays */
-            sky.engine = BAND[mid];
-    }
+    choose_sound();
     sky.root_hz = root;
     for (i = 0; i < 7; i++)
         sky.scale[i] = MODES[ui.mode][i];
@@ -572,6 +642,7 @@ static void net_tick(uint32_t now)
             ui.wx_cloud = (float)r->cloud;
             ui.wx_press = (float)r->press10 / 10.0f;
             ui.wx_trend = r->trend10 <= -10 ? -1 : r->trend10 >= 10 ? 1 : 0;   /* a hPa in 3 hours */
+            ui.wx_code = r->wcode;
             if (r->kp100 >= 0)
                 ui.wx_kp = (float)r->kp100 / 100.0f;
             else if (!ui.net_at)
@@ -715,8 +786,7 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
     sky_map(&sky, &m);
     for (i = 0; i < NLINES; i++)
         col[i] = C_TXT;
-    note_name(v, sky.hz[0]);             /* the drone's root */
-    line2(lines[0], sky.on ? "COSMOS" : "COSMOS  (OFF)", v);
+    line2(lines[0], sky.on ? "COSMOS" : "COSMOS  (OFF)", engine_name(sky.engine));   /* the pad playing */
     copy(lines[1], "----------------------------", 32);
     col[1] = C_LOW;
     fil = round_f(fm_log2f(m.cutoff / 450.0f) / fm_log2f(7000.0f / 450.0f) * 99.0f);
@@ -727,30 +797,33 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
     field(r, "FILTER", v, 12);
     line2(lines[2], l, r);
     put(put_int(v, round_f(sky.clouds)), "%");
-    field(l, "CLOUDS", v, 12);
+    field(l, W_NAME[weather_now()], v, 12);   /* the weather's kind, the cloud cover */
     put_int(v, round_f(m.verb * 100.0f));
     field(r, "REVERB", v, 12);
     line2(lines[3], l, r);
     q = put_int(v, round_f(sky.press));
     put(q, sky.trend < 0 ? " v" : sky.trend > 0 ? " ^" : " =");
     field(l, "PRESS", v, 12);
-    field(r, "", engine_name(sky.engine), 12);   /* the instrument it picks */
+    {   /* the chord's colour */
+        float t = tension(&sky);
+        field(r, "CHORD", t < 0.3f ? "TRIAD" : t < 1.3f ? "7TH" : "SUS 9", 12);
+    }
     line2(lines[4], l, r);
     q = put_int(v, round_f(sky.kp * 10.0f) / 10);
     q = put(q, ".");
     put_int(q, round_f(sky.kp * 10.0f) % 10);
     field(l, "KP", v, 12);
-    if (m.storm > 0.0f)
-        put(v, "STORM");
-    else
+    if (sky.rhythm != R_NONE) {          /* the Sun stirred: the rhythms */
+        field(r, "", sky.rhythm == R_PULSAR ? "PULSAR" : "STARGATE", 12);
+    } else {
         put_int(v, round_f(m.drift * 99.0f));
-    field(r, "DRIFT", v, 12);
+        field(r, "DRIFT", v, 12);
+    }
     line2(lines[5], l, r);
-    if (m.storm > 0.0f)
+    if (sky.rhythm != R_NONE)
         col[5] = C_STORM;
     field(l, "MOON", moon_name(sky.moon), 12);
-    put_int(v, round_f(m.sub * 198.0f));
-    field(r, "SUB", v, 12);
+    field(r, "", voice_name(sky.voice), 12);   /* the stars' voice */
     line2(lines[6], l, r);
     copy(lines[7], "----------------------------", 32);
     col[7] = C_LOW;
@@ -910,11 +983,11 @@ static void sky_frame(void)
 }
 
 /* ------------------------------------------------------------- the settings --- */
-#define NROWS 8
+#define NROWS 9
 static void settings_frame(void)
 {
     static const char *const LABEL[NROWS] = {"LATITUDE", "LONGITUDE", "UTC", "SUMMER TIME", "DATE", "TIME",
-                                             "INSTRUMENT", "TUNING"};
+                                             "PAD", "STARS", "TUNING"};
     char t[32], v[24], l[24], *q;
     int32_t y, mo, d, h, mi, i;
     local_time(unix_now(), &y, &mo, &d, &h, &mi);
@@ -924,7 +997,7 @@ static void settings_frame(void)
         t[0] = 0;
         if (i == 0) {
             copy(t, "SETTINGS", 32);
-        } else if (i == 1 || i == 10) {
+        } else if (i == 1 || i == 11) {
             copy(t, "----------------------------", 32);
             c = C_LOW;
         } else if (i >= 2 && i < 2 + NROWS) {
@@ -960,7 +1033,10 @@ static void settings_frame(void)
                 put2(q, mi);
                 break;
             case 6:
-                copy(v, set.inst >= 2 && set.inst <= 5 ? engine_name(set.inst - 2) : "AUTO", 24);
+                copy(v, set.inst >= 2 && set.inst < 2 + ENG_N ? engine_name(set.inst - 2) : "AUTO", 24);
+                break;
+            case 7:
+                copy(v, set.stars >= 1 && set.stars <= NVOICE ? voice_name(set.stars - 1) : "AUTO", 24);
                 break;
             default:
                 copy(v, set.tuning == 0 ? "COSMIC" : set.tuning == 1 ? "EQUAL" : "NATURAL", 24);
@@ -969,11 +1045,8 @@ static void settings_frame(void)
             copy(l, r == ui.row ? "> " : "  ", 24);
             put(l + 2, LABEL[r]);
             line2(t, l, v);
-        } else if (i == 11) {
-            copy(t, "SELECT ROW  ALGO STEP", 32);
-            c = C_MID;
         } else if (i == 12) {
-            copy(t, "PRESET BIG  GLO BACK", 32);
+            copy(t, "SELECT ROW ALGO/PRESET STEP", 32);
             c = C_MID;
         } else if (i == 13) {
             int b = plat_battery();
@@ -1027,9 +1100,15 @@ static void settings_change(int32_t step, int big)
     case 5:
         clock_set(u + (uint32_t)(step * (big ? 3600 : 60)));
         break;
-    case 6:                              /* AUTO (the pressure's), ORGAN, STRINGS, CHOIR, WARM PAD */
-        set.inst = (uint8_t)((set.inst < 2 ? 0 : set.inst - 1) + 5 + (step > 0 ? 1 : -1)) % 5;
-        set.inst = set.inst ? (uint8_t)(set.inst + 1) : 1;
+    case 6:                              /* AUTO (the weather's), or one of the pads */
+        {
+            int32_t k = (set.inst < 2 ? 0 : set.inst - 1) + (ENG_N + 1) + (step > 0 ? 1 : -1);
+            k %= ENG_N + 1;
+            set.inst = (uint8_t)(k ? k + 1 : 1);
+        }
+        break;
+    case 7:                              /* AUTO (the moon's), or one of the star voices */
+        set.stars = (uint8_t)((set.stars + (NVOICE + 1) + (step > 0 ? 1 : -1)) % (NVOICE + 1));
         break;
     default:
         set.tuning = (uint8_t)((set.tuning + 3 + (step > 0 ? 1 : -1)) % 3);
@@ -1215,17 +1294,48 @@ static int wifi_page_input(uint32_t down, int32_t es, int32_t ea)
 }
 
 /* ------------------------------------------------------------ the arpeggiator --- */
-/* a line sweeps the square left to right in 16 s; each star brighter than magnitude 3 it crosses plays a pluck: its
- * height a degree of the scale now (two octaves, the root two octaves over the drones' at the bottom), its brightness
- * its loudness. Clouds and daylight hide stars, and so thin the notes out */
+/* a line sweeps the square left to right in 16 s; each star brighter than magnitude 3 it crosses plays a note in
+ * the moon's voice: its height a degree of the scale now (two octaves, the root two octaves over the drones' at the
+ * bottom), its brightness its loudness, its place across the screen its place in the stereo. Hidden stars play softly.
+ * With the full moon's chimes a gust swings the neighbours too. Under STARGATE (Kp 4) a sixteenth at a time instead:
+ * the star nearest the line, in the sequence's voice. Under PULSAR the engine holds each note to its grid */
 #define SWEEP_MS 16000u
+#define SEQ_STEP_MS 134u                 /* STARGATE's sixteenths: 112 BPM */
 #define ARP_MAG10 30
 static void arp_tick(void)
 {
+    static uint32_t seq_step;
     uint32_t now = plat_ms(), x = now % SWEEP_MS * 240u / SWEEP_MS, from = ui.sweep_x;
     int32_t i, best[2] = {-1, -1};
     ui.sweep_x = x;
-    if (!set.arp || !sky.on || ui.splash_on || x == from)
+    if (!set.arp || !sky.on || ui.splash_on)
+        return;
+    if (sky.rhythm == R_STARGATE) {      /* the sequence: each sixteenth (112 BPM) the star nearest the line */
+        uint32_t k = now / SEQ_STEP_MS;
+        int32_t near = -1, nd = 999;
+        if (k == seq_step)
+            return;
+        seq_step = k;
+        for (i = 0; i < (int32_t)NSTARS; i++) {
+            int32_t dd = (int32_t)star_x[i] - (int32_t)x;
+            if (star_y[i] == 255 || STARS[i].mag10 > ARP_MAG10)
+                continue;
+            dd = dd < 0 ? -dd : dd;
+            dd = dd > 120 ? 240 - dd : dd;
+            if (dd < nd) {
+                nd = dd;
+                near = i;
+            }
+        }
+        if (near >= 0) {
+            int32_t deg = (239 - star_y[near]) * 15 / 240 % 7;
+            eng_note(sky.root_hz * 4.0f * ratio(semis(deg)), k % 4u ? 0.18f : 0.26f,
+                     ((float)star_x[near] / 120.0f - 1.0f) * 0.3f, V_SEQ, 0);
+            star_flash[near] = 3;
+        }
+        return;
+    }
+    if (x == from)
         return;
     for (i = 0; i < (int32_t)NSTARS; i++) {   /* the two brightest it crossed since the last frame */
         uint32_t sx = star_x[i];
@@ -1248,7 +1358,8 @@ static void arp_tick(void)
         if (!crossed)
             continue;
         deg = (239 - pl_y[i]) * 15 / 240;
-        eng_note(sky.root_hz * 4.0f * ratio(semis(deg)), i == sky.planet ? 0.28f : 0.22f);
+        eng_note(sky.root_hz * 4.0f * ratio(semis(deg)), i == sky.planet ? 0.28f : 0.22f,
+                 ((float)px / 120.0f - 1.0f) * 0.8f, -1, 0);
         pl_flash[i] = 16;
     }
     for (i = 0; i < 2; i++)
@@ -1257,7 +1368,14 @@ static void arp_tick(void)
             float amp = 0.08f + (float)(ARP_MAG10 - STARS[st].mag10) * 0.003f;
             if (star_dim[st >> 3] >> (st & 7) & 1u)   /* a hidden one: softly */
                 amp *= 0.45f;
-            eng_note(sky.root_hz * 4.0f * ratio(semis(deg)), amp);
+            {
+                float pan = ((float)star_x[st] / 120.0f - 1.0f) * 0.8f;   /* where it is on the screen */
+                eng_note(sky.root_hz * 4.0f * ratio(semis(deg)), amp, pan, -1, 0);
+                if (sky.voice == V_CHIMES && sky.rhythm == R_NONE && (rnd() & 0xFFu) < 90u) {
+                    eng_note(sky.root_hz * 4.0f * ratio(semis(deg + 2)), amp * 0.5f, pan, -1, 50u + rnd() % 150u);
+                    eng_note(sky.root_hz * 4.0f * ratio(semis(deg + 4)), amp * 0.4f, pan, -1, 150u + rnd() % 200u);
+                }                        /* a gust: the chimes beside it swing too */
+            }
             star_flash[st] = 5;
         }
 }
@@ -1485,8 +1603,10 @@ void app_frame(void)
             nat.press += (ui.wx_press - nat.press) * k;
             nat.kp += (ui.wx_kp - nat.kp) * k;
             nat.trend = ui.wx_trend;
+            nat.wcode = ui.wx_code;
         } else {
             weather_tick(hours);
+            nat.wcode = -1;              /* the weather's kind from the clouds and the pressure */
         }
         if (!set.manual)
             nature_to_sky();
@@ -1538,7 +1658,7 @@ void app_frame(void)
 uint32_t shim_heap_used = 0;
 const uint32_t shim_heap_size = 278528;
 /* the host simulator has no lwIP (net.c is the device's): the fetch answers at once */
-static net_res_t host_res = {2, 85, 10032, -14, 3600, 233, "Mon, 26 Oct 2026 21:41:02 GMT", ""};
+static net_res_t host_res = {2, 85, 10032, -14, 3600, 233, 61, "Mon, 26 Oct 2026 21:41:02 GMT", ""};
 int net_fetch(int32_t lat100, int32_t lon100)
 {
     (void)lat100;

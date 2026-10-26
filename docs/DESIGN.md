@@ -10,7 +10,7 @@
 
 ## Sound engine
 
-Two layers: one drone underneath, an instrument on top.
+Three layers over a drone, each led by the source whose pace suits it.
 
 **The drone**, soft, on the chord's root and its fifth, sliding to the next chord in 1.5 s:
 
@@ -18,21 +18,46 @@ Two layers: one drone underneath, an instrument on top.
   beat, and one an octave up; the moon's light sets how much the modulators colour the sines (new moon nearly pure)
 - a sub an octave down, pink noise, a gentle filter (the sun opens it), a slow breath
 
-**The instrument** plays the whole chord, a seventh of the scale, an octave over the drone. Each new chord is
-attacked anew (the old one let go), so the chords are heard as chords. The pressure picks it (below); the settings'
-INSTRUMENT can fix one.
+**1. The pad: the weather, by day or by night.** It plays the whole chord an octave over the drone, each new chord
+attacked anew (the old one let go). The weather's kind comes from Open-Meteo (its WMO code); offline and in EDIT it is
+guessed from the clouds and the pressure. Day is the sun above −6° (civil twilight). A new pad takes over at the next
+chord. The settings' PAD can fix one (`cosmos/dsp/pads.c`).
 
-| Instrument | Made of | Attack / release |
+| Weather | Day | Night |
 | --- | --- | --- |
-| ORGAN | drawbars 16', 8', 4', 2 2/3', 2', 1 1/3' on one phase, a soft key click, a slow rotor between the sides | 0.03 / 0.35 s |
-| STRINGS | three saws a few cents apart, low-passed together | 1.1 / 2.2 s |
-| CHOIR | a saw with a vibrato and a breath, through three formants ("aah") | 0.9 / 1.8 s |
-| WARM PAD | two saws 9 cents either side, a tape wow, dark | 0.7 / 2.0 s |
+| Clear | NEBULA: four saws a note fanned out (±22 cents), a filter opening through each chord | AURORA: sine, triangle and octave, the reverb's tail climbing in octaves (shimmer), more with Kp and the full moon |
+| Partly cloudy | STRINGS: a string machine, an ensemble of three chorus lines, a phaser | QUASAR: a cloud of short sine grains on the chord, scattered across the stereo |
+| Overcast | ORGAN: drawbars 16' to 1', the pipes' chiff, a slow rotor, a cathedral | VOYAGER: three voices a note with their own vibratos, formants moving from vowel to vowel |
+| Fog | BACKGROUND: 24 harmonics of the root, those on the chord lit, the rest a breathing veil | HORIZON: FM swells growing into each chord as if played backwards |
+| Drizzle | TAPE: saws on a worn tape, wow and flutter, saturated, hiss | DEEP FIELD: sines through a slowly changing wavefolder |
+| Rain | CRYSTAL: inharmonic FM (1.41, 3.5), glassy | RINGS: resonators on each note and its harmonics, bowed by noise |
+| Snow | SOLAR WIND: noise through narrow band-passes on the chord, in gusts | SOLAR WIND |
+| Thunderstorm | SUPERNOVA: brass, saws bending in, a filter swelling over 3.5 s | GRAVITY: saws falling into each chord, a wobbling low-pass, driven, a sub |
 
-Then the arpeggiator's plucks, a slow stereo chorus, a 0.4 s ping-pong delay whose read wanders like tape, a warm
+**2. The star voice: the moon.** What the star sequencer plays changes with the phase, one each eighth of the
+cycle; the settings' STARS can fix one (`cosmos/dsp/stars.c`).
+
+| Moon | Voice |
+| --- | --- |
+| New | DROPS: a sine and its octave, dying away |
+| Waxing crescent | KALIMBA: a metal tine, two inharmonic partials, a wooden box |
+| First quarter | HARP: a plucked string (Karplus-Strong) and its octave |
+| Waxing gibbous | CELESTA: a soft FM bell, a low shadow |
+| Full | CHIMES: a tube's four inharmonic modes; a gust swings the neighbours too |
+| Waning gibbous | GLASS: glassy FM and a partial at 2.76 |
+| Last quarter | MUSIC BOX: an FM tine on the tape's wow |
+| Waning crescent | FLUTE: a pipe, its octave, breath |
+
+**3. The rhythm: Kp, only when the Sun stirs.** From Kp 4 the star sequencer becomes STARGATE: each sixteenth at
+112 BPM it plays the star nearest the line, a resonant analog voice whose filter snaps. From Kp 5 (a geomagnetic
+storm) PULSAR: the pad is gated in sixteenths at 104 BPM over a soft beat, and the stars pluck on the grid. Three
+tenths of Kp back before it leaves.
+
+Then a slow stereo chorus (each pad its own depth), a 0.4 s ping-pong delay whose read wanders like tape, a warm
 drive over the sound and its echoes together, and a reverb: four all-passes diffuse the input into four long lines
-(68 to 105 ms) mixed by a Hadamard matrix, longer under clouds. In a storm (Kp 5 and up) the drone is ring-modulated.
-The delay, the reverb and the chorus take 107 KB of the WiFi heap.
+(68 to 105 ms) mixed by a Hadamard matrix, longer under clouds (each pad adds its own). In a storm the drone is
+ring-modulated. The delay, the reverb, the chorus, the shimmer, the harp strings and the pads' state take 124 KB of
+the WiFi heap (MEMORY.md: about 125 KB is the sound's).
 
 No presets, no scenes: the sound moves continuously, never jumps.
 
@@ -48,7 +73,7 @@ any of them); when one sets, it goes. A planet brings two things:
 - **Four chords** on that note, one every 10 s, in the mode the sun's height gives: Phrygian below -18 degrees,
   Aeolian to -6, Dorian to the horizon, Mixolydian to 12, Ionian to 30, Lydian above.
 
-The sound is not the planet's: the instrument is the pressure's.
+The sound is not the planet's: the pad is the weather's.
 
 | Planet | Note (cosmic) | Natural | Chords (degrees) |
 | --- | --- | --- | --- |
@@ -60,18 +85,19 @@ The sound is not the planet's: the instrument is the pressure's.
 | Jupiter | 183.58 Hz (F#) | A | I IV II V |
 | Saturn | 147.85 Hz (D) | B | I III VII VI |
 
-## The arpeggiator
+## The star sequencer
 
-A line sweeps the square left to right in 16 s. Each star brighter than magnitude 3 it crosses plucks a note: its
-height a degree of the scale now (two octaves up from the root two octaves over the drones), its brightness the
-loudness, two at most at once. The planets it crosses pluck too, louder (the chosen one most). Clouds and daylight
+A line sweeps the square left to right in 16 s. Each star brighter than magnitude 3 it crosses plays a note in the
+moon's voice: its height a degree of the scale now (two octaves up from the root two octaves over the drones), its
+brightness the loudness, its place across the screen its place in the stereo, two at most at once. The planets it crosses pluck too, louder (the chosen one most). Clouds and daylight
 hide stars, so they thin the arpeggio out; a clear night is busy. On the ARP screen the line shows, and what plays
 lights up: a star flashes, a planet glows.
 
 ## Chords
 
-Always a chord, the seventh chord of the scale on a degree, in the sun's mode: the drone holds its root and fifth,
-the instrument the four notes an octave up. Four chords always go round, one every 10 s: with no planet on the last
+Always a chord on a degree of the scale, in the sun's mode, coloured by the pressure: high and steady, the triad
+and its octave; falling, the seventh; deep down, suspended with the ninth. The drone holds its root and fifth, the
+pad the four notes an octave up. Four chords always go round, one every 10 s: with no planet on the last
 key's note, with one on the planet's; a key plays the chord of the scale on its note for a while (held and 10 s
 after).
 
@@ -81,11 +107,12 @@ The slower a source changes, the more drastic its effect. Otherwise the sound st
 
 | Source | Pace | Controls | Depth |
 | --- | --- | --- | --- |
-| **Pressure** | hours to days | The instrument: 1020 hPa and up the ORGAN, 1012 to 1020 STRINGS, 1004 to 1012 the WARM PAD, below 1004 the CHOIR (1.5 hPa either side before it changes); how fast the drone beats | Drastic: a new instrument from the next chord |
-| **Moon phase** | ~29.5 days | The drone's light: how much the modulators colour its sines, the sub, the filter's resonance | New moon nearly pure sines; full, a veil of harmonics, a full sub, a singing filter |
-| **Kp index** | hours; storms are rare | Events: low Kp, a gentle drift; Kp 5 and up ring-modulates the drone | Rare but drastic |
+| **Weather's kind** | hours | The pad (with the sun: day or night) | Drastic: a new instrument from the next chord |
+| **Pressure** | hours to days | The chords' colour (triad, seventh, suspended ninth); how fast the drone beats | Medium |
+| **Moon phase** | ~29.5 days | The star voice; the drone's light (how much the modulators colour its sines, the sub, the filter's resonance) | A new voice every three or four nights |
+| **Kp index** | hours; storms are rare | A gentle drift; from Kp 4 STARGATE, from 5 PULSAR and the drone ring-modulated | Rare but drastic |
 | **Cloud cover** | hours | Space: reverb, delay, noise | Medium |
-| **Sun height** | continuous, daily | Light: filter cutoff (450 Hz at night, 1.2 kHz at the horizon, 7 kHz high) | Gentle |
+| **Sun height** | continuous, daily | The mode; day or night for the pad; light: filter cutoff (450 Hz at night, 1.2 kHz at the horizon, 7 kHz high) | Gentle, and twice a day drastic |
 
 Sun height, not clock time: the sound follows the seasons by itself, and dawn sounds at dawn.
 
@@ -132,7 +159,7 @@ With WiFi off (REC on the WiFi page), or no network in range:
 | **SEL** | the next planet up (in EDIT any of the seven classical ones), or none |
 | **LFO** | the sky alone (a button or a knob brings the readings back for two seconds; the keys only play), and back |
 | **ARP** | the ARP screen: the sky, the arpeggiator on, its line, what it plays lighting up; again: off, and back |
-| **GLO** | the settings: latitude, longitude, UTC offset, summer time, date, time (local), the instrument (AUTO: the pressure's, or ORGAN, STRINGS, CHOIR, WARM PAD), the tuning (COSMIC, EQUAL or NATURAL) |
+| **GLO** | the settings: latitude, longitude, UTC offset, summer time, date, time (local), the pad (AUTO: the weather's, or one of the fifteen), the star voice (AUTO: the moon's, or one of the eight), the tuning (COSMIC, EQUAL or NATURAL) |
 | **PLAY** | the sky stopped or playing; stopped, a key still sounds its chord, held and for 10 s after. Stopping saves |
 | **Lights** | the buttons that do something glow, the ones in use bright; the keys of the scale glow, the root's bright |
 | **OCT− / OCT+** | the octave |
@@ -145,19 +172,21 @@ With WiFi off (REC on the WiFi page), or no network in range:
 240×240, white on black, Terminus bitmap font (in fm1-base), English, text only.
 
 ```
-COSMOS                 A2 E3
+COSMOS                 RINGS
 ----------------------------
-SUN     +38°    FILTER    62
-CLOUDS   72%    REVERB    71
-PRESS 1008 ↓       STRINGS
-KP         4    DRIFT     44
-MOON     83%    SUB       83
+SUN      -57    FILTER     0
+RAIN     85%    REVERB    66
+PRESS 1003 v    CHORD    7TH
+KP       2.3    DRIFT     37
+MOON    FULL          CHIMES
 ----------------------------
 SKY 100%         UPD 12 MIN
 ```
 
 - Left: the reading from the world. Right: what it is doing to the sound.
-- PRESS shows the trend: ↑ rising, ↓ falling, → steady. On its right, the instrument the pressure picks.
+- The top line names the pad playing. The second reading is the weather's kind and the cloud cover. PRESS shows
+  the trend (^ rising, v falling, = steady), and on its right the chord's colour. Kp's right side names the rhythm
+  when the Sun stirs (STARGATE, PULSAR, in orange). The moon's right side names the star voice.
 - The readings stay. On the sky alone (LFO, ARP) they fade in (0.3 s) on a touch, hold (2 s after the last touch),
   then fade out (1.5 s). See `docs/img/rome-2026-11-09-fade.gif`.
 - Saving to flash silences the sound for a moment, so COSMOS saves only when PLAY stops it and when the settings

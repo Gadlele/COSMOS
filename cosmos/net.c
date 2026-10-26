@@ -23,7 +23,7 @@ void br_fm1_yield(void) { os_time_dly(0); }        /* BearSSL's long computation
 
 typedef struct {
     int done;
-    int32_t cloud, press10, trend10, utc_s, kp100;
+    int32_t cloud, press10, trend10, utc_s, kp100, wcode;
     char date[40];
     char why[32];
 } net_res_t;                                      /* app.h's */
@@ -366,7 +366,8 @@ static void fetch_task(void *arg)
     q += snprintf(q, 12, "&longitude=");
     q = dec2(q, at_lon100);
     snprintf(q, (unsigned long)(path + sizeof path - q),
-             "&current=cloud_cover,pressure_msl&hourly=pressure_msl&past_hours=3&forecast_hours=1&timezone=auto");
+             "&current=cloud_cover,pressure_msl,weather_code&hourly=pressure_msl&past_hours=3&forecast_hours=1"
+             "&timezone=auto");
     n = https_get("api.open-meteo.com", path, body, BODY_MAX);
     if (n > 0) {
         const char *cur, *hr, *off;
@@ -386,6 +387,9 @@ static void fetch_task(void *arg)
             if (res.cloud >= 0)
                 res.cloud /= 100;
             res.press10 = p >= 0 ? p / 10 : -1;
+            res.wcode = num100(find(cur, rest, "\"weather_code\":", 0));
+            if (res.wcode >= 0)
+                res.wcode /= 100;
             res.done++;
         } else {
             why_to("open-meteo: no data");
@@ -416,7 +420,7 @@ int net_fetch(int32_t lat100, int32_t lon100)
     if (busy)
         return -1;
     memset(&res, 0, sizeof res);
-    res.cloud = res.press10 = res.kp100 = -1;
+    res.cloud = res.press10 = res.kp100 = res.wcode = -1;
     res.trend10 = 0;
     res.utc_s = -999999;                          /* app.h NET_NONE_S: none */
     at_lat100 = lat100;

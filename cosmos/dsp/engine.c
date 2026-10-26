@@ -7,12 +7,10 @@
  *   fifth: three more ──────┼─ its gentle filter ─ its breath ─┐   either side of the note, one an octave up; the
  *   sub, pink noise ────────┘                                  │   index low (the moon's light raises it)
  *                                                ring-modulated in a storm
- *   + the instrument on top, the whole chord, each chord attacked anew (sky_t.engine, from the pressure):
- *       ORGAN    drawbars (16' to 1 1/3') on one phase, a soft click, a slow rotor
- *       STRINGS  three saws a few cents apart, a slow bow, low-passed together
- *       CHOIR    a saw breathing a vibrato, through three formants ("aah")
- *       WARM PAD two saws with a tape wow, dark
- *   + the arpeggiator's plucks ─ a slow stereo chorus
+ *   + a pad on top, the whole chord, each chord attacked anew: one of fifteen (pads.c), the weather's by day or by
+ *     night (sky_t.engine), gated by PULSAR in a geomagnetic storm (stars.c)
+ *   + the star voices: one of eight, the moon's (sky_t.voice), or the rhythms' (stars.c)
+ *   ─ a slow stereo chorus
  *   ─┬─ dry ────────────────────────────────┬─ warmth (a soft drive over the sound and its echoes) ─ out
  *    ├─ delay: 0.4 s ping-pong, tape wow ───┤
  *    └─ reverb: diffused, four long lines ──┘
@@ -47,11 +45,9 @@ typedef struct {
     float partner, sub, cutoff, q, noise, verb;   /* multipliers (verb: added) */
 } engine_t;
 static const engine_t DRONE = {0.9f, 1.0f, 2.0f, 0.45f, 6.0f, 3.0f, 0.6f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f};
-static const char *const ENG_NAME[ENG_N] = {"ORGAN", "STRINGS", "CHOIR", "WARM PAD"};
 static const char *const PL_NAME[PL_N] = {"", "SUN", "MOON", "MERCURY", "VENUS", "MARS", "JUPITER", "SATURN"};
 
 const char *planet_name(int32_t p) { return p > 0 && p < PL_N ? PL_NAME[p] : ""; }
-const char *engine_name(int32_t k) { return k >= 0 && k < ENG_N ? ENG_NAME[k] : ""; }
 
 /* ---------------------------------------------------------------- the mappings --- */
 static const struct { int8_t semi; char name[3]; } INTERVALS[] = {   /* from consonant to tense */
@@ -107,6 +103,7 @@ void sky_map(const sky_t *s, sky_map_t *m)
 /* ------------------------------------------------------------------ the state --- */
 static volatile sky_map_t target;        /* the main loop writes, the render reads (word-sized fields) */
 static volatile int32_t target_on, target_don[2], target_engine, target_chord;   /* chord: the partners are a chord's tones */
+static volatile int32_t target_voice, target_rhythm;   /* the star voice; 0 none, 1 STARGATE, 2 PULSAR */
 static volatile float target_notes[NCHORD];   /* the instrument's chord, Hz (0: none) */
 static volatile uint32_t target_chord_n;      /* a new chord: it changes */
 static int16_t *dly, *ap_line[4], *rv_line[4], *ch_line;
@@ -114,6 +111,10 @@ static uint32_t dly_i, ap_i[4], rv_i[4], ch_i;
 #define CH_N 1024u                       /* the chorus's line, stereo (23 ms) */
 #define CH_C 480.0f                      /* its delay: 11 ms... */
 #define CH_D 150.0f                      /* ...3.4 ms either way */
+#define SH_N 2048u                       /* the shimmer's line (AURORA): 46 ms */
+#define SH_G 1764.0f                     /* its grain: 40 ms */
+static int16_t *sh_line;
+static uint32_t sh_i;
 #ifndef GLIDE_S
 #define GLIDE_S 1.5f                     /* a new chord: the notes slide to it over about this long, s */
 #endif
@@ -130,28 +131,23 @@ typedef struct {                         /* a drone */
     float incs, lvl;
 } drone_t;
 
-#define NPING 12
-typedef struct {                         /* a struck partial of a planet's voice */
-    uint32_t ph, inc, mph, minc;         /* its phase, and its modulator's (an FM bell) */
-    float amp, dec, idx, idec;           /* its level and its decay a sample; the modulation index and its decay */
-    int32_t wait;                        /* samples before it starts */
-} ping_t;
-
 static struct {                          /* where the render is: each glides to the target */
     float pr[2], beat, cutoff, q, sub, verb, delay, feedback, noise, dry, drift, storm, level, gate[2];
+    float chr, vadd, shim, shph, lit;    /* the pad's chorus and reverb, AURORA's shimmer and its grain phase */
     engine_t eng;                        /* the drone's */
     drone_t d[2];
     uint32_t phR, phW, phC;              /* the ring's oscillator; the tape's wow; the chorus's sway */
     float p0, p1, p2;                    /* pink noise (Paul Kellet's economy filter) */
     float dlpL, dlpR, rvlp[4];
-    ping_t ping[NPING];                  /* the arpeggiator's plucks */
-    float alp;                           /* their low-pass: soft, not bell-like */
     uint32_t rnd;
     int started;
 } e = {.rnd = 0x9E3779B9u, .d = {{.breath_rate = 0.043f, .wow_rate = 0.53f},
                                   {.breath = 0.37f, .breath_rate = 0.031f, .wow = 0.4f, .wow_rate = 0.41f}}};
 
-uint32_t eng_bytes(void) { return (2u * DLY_N + AP_N + RV_N + 2u * CH_N) * 2u; }
+static int pads_init(void);
+static int stars_init(void);
+static uint32_t pads_bytes(void), stars_bytes(void);
+uint32_t eng_bytes(void) { return (2u * DLY_N + AP_N + RV_N + 2u * CH_N) * 2u + SH_N * 2u + pads_bytes() + stars_bytes(); }
 
 int eng_init(void)
 {
@@ -160,8 +156,11 @@ int eng_init(void)
     dly = malloc(2u * DLY_N * 2u);
     p = malloc((AP_N + RV_N) * 2u);
     ch_line = malloc(2u * CH_N * 2u);
-    if (!dly || !p || !ch_line)
+    sh_line = malloc(SH_N * sizeof(int16_t));
+    if (!dly || !p || !ch_line || !sh_line || pads_init() || stars_init())
         return -1;
+    for (i = 0; i < SH_N; i++)
+        sh_line[i] = 0;
     for (i = 0; i < 2u * CH_N; i++)
         ch_line[i] = 0;
     for (i = 0; i < 2u * DLY_N; i++)
@@ -200,6 +199,9 @@ void eng_sky(const sky_t *s)
     target.drift = m.drift;
     target.storm = m.storm;
     target_engine = s->engine >= 0 && s->engine < ENG_N ? s->engine : 0;
+    target_voice = s->voice >= 0 && s->voice < NVOICE ? s->voice : 0;
+    target_rhythm = s->rhythm;
+    target.lit = m.lit;
     {
         int32_t k;
         for (k = 0; k < NCHORD; k++)
@@ -234,56 +236,6 @@ static inline float sat(float x)
     return x * (27.0f + x * x) / (27.0f + 9.0f * x * x);
 }
 static inline float glide(float now, float to, float k) { return now + (to - now) * k; }
-
-/* ---- the planets' voices: struck partials (a sine, or an FM bell), and Jupiter's swell */
-static void strike(float hz, float amp, float tau, float mod_ratio, float index, float itau, int32_t wait)
-{
-    int i, quiet = 0;
-    for (i = 1; i < NPING; i++)          /* a free one, or the quietest */
-        if (e.ping[i].amp < e.ping[quiet].amp)
-            quiet = i;
-    e.ping[quiet].ph = 0;
-    e.ping[quiet].mph = 0;
-    e.ping[quiet].inc = (uint32_t)(hz * TO32);
-    e.ping[quiet].minc = (uint32_t)(hz * mod_ratio * TO32);
-    e.ping[quiet].amp = amp;
-    e.ping[quiet].dec = fm_expf(-1.0f / (tau * SR));
-    e.ping[quiet].idx = index;
-    e.ping[quiet].idec = itau > 0.0f ? fm_expf(-1.0f / (itau * SR)) : 1.0f;
-    e.ping[quiet].wait = wait;
-}
-
-static float semi(int32_t s) { return fm_exp2f((float)s / 12.0f); }
-
-/* the arpeggiator's notes, from the main loop: a small queue the render takes from at each block */
-#define NQ 8
-static volatile struct { float hz, amp; } note_q[NQ];
-static volatile uint32_t q_w, q_r;
-
-void eng_note(float hz, float amp)
-{
-    uint32_t w = q_w;
-    if (w - q_r >= NQ)
-        return;                          /* full: the note is dropped */
-    note_q[w % NQ].hz = hz;
-    note_q[w % NQ].amp = amp;
-    q_w = w + 1u;
-}
-
-/* a pluck: the fundamental and two harmonics, each dying away, the higher ones sooner */
-static void notes_block(void)
-{
-    while (q_r != q_w) {
-        uint32_t r = q_r;
-        float hz = note_q[r % NQ].hz, amp = note_q[r % NQ].amp;
-        if (target_on) {
-            strike(hz, amp, 0.55f, 0.0f, 0.0f, 0.0f, 0);
-            strike(hz * 2.0f, amp * 0.35f, 0.25f, 0.0f, 0.0f, 0.0f, 0);
-            strike(hz * 3.0f, amp * 0.12f, 0.12f, 0.0f, 0.0f, 0.0f, 0);
-        }
-        q_r = r + 1u;
-    }
-}
 
 /* ---- a drone's block: its wanders, its pitch, its filter */
 static void drone_block(drone_t *d, float hz, float pratio, float cutoff, uint32_t frames)
@@ -359,212 +311,14 @@ static inline float drone_tick(drone_t *d, float idx, float ol, uint32_t pm, flo
     return sat(v2) * d->lvl * breath;
 }
 
-/* ---- the instrument: the chord on top, a voice a note, each chord attacked anew */
-#define NV 10                            /* the chord's notes, and the last chord's dying away */
-typedef struct {
-    uint32_t ph[3];                      /* its oscillators */
-    float inc[3], hz;
-    float env, click;                    /* its level 0..1; the organ's key click */
-    int32_t held, inst;                  /* held, or dying away; the instrument it began on */
-} voice_t;
-/* each instrument's rise and fall (s), and its level */
-static const struct { float att, rel, gain; } INST[ENG_N] = {
-    {0.03f, 0.35f, 0.16f},               /* ORGAN */
-    {1.1f, 2.2f, 0.26f},                 /* STRINGS */
-    {0.9f, 1.8f, 0.42f},                 /* CHOIR */
-    {0.7f, 2.0f, 0.30f},                 /* WARM PAD */
-};
-static struct {
-    voice_t v[NV];
-    uint32_t chord_n;
-    int32_t on;
-    float ka[ENG_N], kr[ENG_N];          /* the envelopes' steps a sample */
-    float rot, rotL, rotR;               /* the organ's rotor: its phase, this block's swing either side */
-    float wow, wowm, vib;                /* the warm pad's tape (phase, its pitch this block), the choir's vibrato phase */
-    float sv[6][2], sa[6][3];            /* the filters' states and coefficients: strings, warm, three formants */
-    float fk[3];                         /* the formants' damping */
-    int32_t active[ENG_N];               /* voices sounding, by instrument: the buses with none are skipped */
-} in_;
-
-static void svf_set(float *a, float fc, float k)
-{
-    float g = fm_tanf(FM_PI * fm_clampf(fc, 40.0f, 16000.0f) / SR);
-    a[0] = 1.0f / (1.0f + g * (g + k));
-    a[1] = g * a[0];
-    a[2] = g * a[1];
-}
-/* Simper's state-variable filter, one sample: the low-pass (bp: the band-pass instead) */
-static inline float svf(float *st, const float *a, float x, int bp)
-{
-    float v3 = x - st[1], v1 = a[0] * st[0] + a[1] * v3, v2 = st[1] + a[1] * st[0] + a[2] * v3;
-    st[0] = 2.0f * v1 - st[0];
-    st[1] = 2.0f * v2 - st[1];
-    return bp ? v1 : v2;
-}
-/* a saw, its step rounded (polyBLEP) */
-static inline float saw(uint32_t ph, float inc)
-{
-    float t = (float)ph * (1.0f / 4294967296.0f), dt = inc * (1.0f / 4294967296.0f), x = 2.0f * t - 1.0f;
-    if (t < dt) {
-        t /= dt;
-        x -= t + t - t * t - 1.0f;
-    } else if (t > 1.0f - dt) {
-        t = (t - 1.0f) / dt;
-        x -= t * t + t + t + 1.0f;
-    }
-    return x;
-}
-
-static void voice_steps(voice_t *v, float vib, float wow)
-{
-    float f = v->hz * TO32;
-    switch (v->inst) {
-    case 0:                              /* the organ: one phase at half the note, the drawbars its multiples */
-        v->inc[0] = f * 0.5f;
-        break;
-    case 1:                              /* strings: three, a few cents apart */
-        v->inc[0] = f * 0.99481f;        /* -9 cents */
-        v->inc[1] = f;
-        v->inc[2] = f * 1.00463f;        /* +8 */
-        break;
-    case 2:                              /* the choir: one, its vibrato */
-        v->inc[0] = f * vib;
-        break;
-    default:                             /* the warm pad: two, 9 cents either side, the tape's wow */
-        v->inc[0] = f * 0.99481f * wow;
-        v->inc[1] = f * 1.00521f * wow;
-        break;
-    }
-}
-
-/* a block: a new chord (the old one let go, the new attacked), the instrument's slow movements, its filters */
-static void inst_block(uint32_t frames)
-{
-    int32_t k, j, on = target_don[1];
-    float dt = (float)frames / SR, sunk = fm_clampf(e.cutoff / 1200.0f, 0.6f, 1.8f);
-    if (!in_.ka[0])
-        for (k = 0; k < ENG_N; k++) {
-            in_.ka[k] = 1.0f - fm_expf(-3.0f / (INST[k].att * SR));
-            in_.kr[k] = fm_expf(-4.0f / (INST[k].rel * SR));
-        }
-    if (on && (!in_.on || in_.chord_n != target_chord_n)) {
-        for (j = 0; j < NV; j++)         /* the old chord let go */
-            in_.v[j].held = 0;
-        for (k = 0; k < NCHORD; k++) {   /* the new one: a voice each, the free or the quietest */
-            voice_t *v;
-            int32_t q = 0;
-            if (target_notes[k] <= 0.0f)
-                continue;
-            for (j = 1; j < NV; j++)
-                if (!in_.v[j].held && (in_.v[q].held || in_.v[j].env < in_.v[q].env))
-                    q = j;
-            v = &in_.v[q];
-            v->held = 1;
-            v->inst = target_engine;
-            v->hz = target_notes[k];
-            v->env = 0.0f;
-            v->click = v->inst == 0 ? 1.0f : 0.0f;
-            v->ph[0] = xs();
-            v->ph[1] = xs();
-            v->ph[2] = xs();
-        }
-        in_.chord_n = target_chord_n;
-    }
-    if (!on && in_.on)
-        for (j = 0; j < NV; j++)
-            in_.v[j].held = 0;
-    in_.on = on;
-    /* the rotor (0.8 Hz), the tape (0.45 Hz, 14 cents), the vibrato (5.1 Hz, 0.4 %) */
-    in_.rot += 0.8f * dt;
-    in_.rot -= (float)(int32_t)in_.rot;
-    in_.rotL = 1.0f + 0.16f * fm_sinf(FM_TWO_PI * in_.rot);
-    in_.rotR = 1.0f - 0.16f * fm_sinf(FM_TWO_PI * in_.rot);
-    in_.wow += 0.45f * dt;
-    in_.wow -= (float)(int32_t)in_.wow;
-    in_.wowm = fm_exp2f(14.0f * fm_sinf(FM_TWO_PI * in_.wow) / 1200.0f);
-    in_.vib += 5.1f * dt;
-    in_.vib -= (float)(int32_t)in_.vib;
-    for (k = 0; k < ENG_N; k++)
-        in_.active[k] = 0;
-    for (j = 0; j < NV; j++) {
-        voice_t *v = &in_.v[j];
-        if (!v->held && v->env < 0.0005f)
-            continue;
-        in_.active[v->inst] = 1;
-        voice_steps(v, 1.0f + 0.004f * fm_sinf(FM_TWO_PI * (in_.vib + 0.13f * (float)j)), in_.wowm);
-    }
-    /* the sun opens them a little, as it opens the drone */
-    svf_set(in_.sa[0], 2200.0f * sunk, 1.4f);
-    svf_set(in_.sa[1], 1300.0f * sunk, 1.4f);
-    svf_set(in_.sa[2], 700.0f, 1.0f / 4.0f);
-    svf_set(in_.sa[3], 1220.0f, 1.0f / 5.0f);
-    svf_set(in_.sa[4], 2600.0f, 1.0f / 8.0f);
-}
-
-/* a sample of the instrument, added to l and r; w a white noise sample (the choir's breath, the organ's click) */
-static inline void inst_tick(float *l, float *r, float w)
-{
-    float org = 0.0f, str = 0.0f, cho = 0.0f, wrm = 0.0f, ce = 0.0f, x;
-    int32_t j;
-    for (j = 0; j < NV; j++) {
-        voice_t *v = &in_.v[j];
-        uint32_t p;
-        int32_t k = v->inst;
-        if (v->held)
-            v->env += (1.0f - v->env) * in_.ka[k];
-        else if (v->env < 0.0005f)
-            continue;
-        else
-            v->env *= in_.kr[k];
-        switch (k) {
-        case 0:                          /* 16' 8' 4' 2 2/3' 2' 1 1/3' */
-            v->ph[0] += (uint32_t)v->inc[0];
-            p = v->ph[0];
-            x = wt(SINE, p) * 0.45f + wt(SINE, p * 2u) + wt(SINE, p * 4u) * 0.55f + wt(SINE, p * 6u) * 0.3f
-                + wt(SINE, p * 8u) * 0.25f + wt(SINE, p * 12u) * 0.08f;
-            if (v->click > 0.001f) {
-                x += w * v->click * 0.6f;
-                v->click *= 0.994f;      /* ~4 ms */
-            }
-            org += x * v->env;
-            break;
-        case 1:
-            v->ph[0] += (uint32_t)v->inc[0];
-            v->ph[1] += (uint32_t)v->inc[1];
-            v->ph[2] += (uint32_t)v->inc[2];
-            str += (saw(v->ph[0], v->inc[0]) + saw(v->ph[1], v->inc[1]) + saw(v->ph[2], v->inc[2])) * v->env;
-            break;
-        case 2:
-            v->ph[0] += (uint32_t)v->inc[0];
-            cho += saw(v->ph[0], v->inc[0]) * v->env;
-            ce += v->env;
-            break;
-        default:
-            v->ph[0] += (uint32_t)v->inc[0];
-            v->ph[1] += (uint32_t)v->inc[1];
-            wrm += (saw(v->ph[0], v->inc[0]) + saw(v->ph[1], v->inc[1])) * v->env;
-            break;
-        }
-    }
-    x = 0.0f;
-    if (in_.active[1])
-        x += svf(in_.sv[0], in_.sa[0], str, 0) * INST[1].gain;
-    if (in_.active[3])
-        x += svf(in_.sv[1], in_.sa[1], wrm, 0) * INST[3].gain;
-    if (in_.active[2]) {                 /* "aah": the formants, and a breath through them */
-        cho += w * 0.05f * ce;
-        x += (svf(in_.sv[2], in_.sa[2], cho, 1) * 0.25f + svf(in_.sv[3], in_.sa[3], cho, 1) * 0.12f
-              + svf(in_.sv[4], in_.sa[4], cho, 1) * 0.04f) * INST[2].gain * 4.0f;
-    }
-    *l += x + org * INST[0].gain * in_.rotL;   /* the organ turns between the sides */
-    *r += x + org * INST[0].gain * in_.rotR;
-}
+#include "pads.c"
+#include "stars.c"
 
 void eng_render(int32_t *lr, uint32_t n, float gain)
 {
     uint32_t i;
     float incR, incW, incC, ring, dry_amp, to0, k0, brA, decay, plv, slv, nzl, verb, idx, ol, chr;
-    if (!dly) {                          /* no lines (no heap): silence */
+    if (!dly || !sh_line || !pd_p || !st_p) {   /* no lines (no heap): silence */
         for (i = 0; i < 2u * n; i++)
             lr[i] = 0;
         return;
@@ -602,19 +356,24 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
     e.drift = glide(e.drift, target.drift, 0.005f);
     e.storm = glide(e.storm, target.storm, 0.004f);
     drone_block(&e.d[0], target.hz[0], e.pr[0], e.cutoff, n);
-    inst_block(n);
-    notes_block();
+    pads_block(n, target_engine, target_don[1], target_notes, target_chord_n);
+    stars_block(n, target_voice, target_rhythm, target_on);
+    /* the pad's own chorus and reverb; AURORA's shimmer: more with Kp (the aurora) and the full moon */
+    e.chr = glide(e.chr, PAD[target_engine].chorus, 0.003f);
+    e.vadd = glide(e.vadd, PAD[target_engine].verb, 0.003f);
+    e.lit = glide(e.lit, target.lit, 0.002f);
+    e.shim = glide(e.shim, target_engine == P_AURORA ? 0.30f + 0.35f * e.drift + 0.15f * e.lit : 0.0f, 0.002f);
     incR = (e.d[0].hz * 2.71f + 3.0f) * TO32;
     incW = 0.37f * TO32;
     incC = 0.23f * TO32;
     /* the moon's light: new, the sines nearly pure; full, the modulators at a little over their engine's */
     idx = e.eng.index * (0.35f + 1.3f * fm_clampf((e.sub - 0.05f) / 0.45f, 0.0f, 1.0f));
     ol = e.eng.olevel;
-    chr = e.eng.chorus;
+    chr = e.chr;
     plv = 0.85f * e.eng.partner;
     slv = e.sub * e.eng.sub;
     nzl = e.noise * e.eng.noise;
-    verb = fm_clampf(e.verb + e.eng.verb, 0.0f, 0.95f);
+    verb = fm_clampf(e.verb + e.vadd, 0.0f, 0.95f);
     ring = 0.35f * e.storm;
     dry_amp = 1.0f - 0.25f * e.storm;
     decay = 0.80f + 0.13f * fm_clampf((verb - 0.10f) / 0.70f, 0.0f, 1.0f);       /* the clouds lengthen it */
@@ -624,7 +383,7 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
     k0 = to0 > e.gate[0] ? 0.00004f : 0.00008f;
     gain *= 8300000.0f * 0.3f;
     for (i = 0; i < n; i++) {
-        float white, nzA, a, l, r, ro, dL, dR, rin, o[4], y[4], outL, outR, pos, fr, v = 0.0f;
+        float white, nzA, a, l, r, ro, dL, dR, rin, o[4], y[4], outL, outR, pos, fr;
         uint32_t j, ri, rj;
         e.gate[0] += (to0 - e.gate[0]) * k0;
         e.level += ((target_on ? 1.0f : 0.0f) - e.level) * 0.00008f;   /* the planet's voice */
@@ -640,30 +399,13 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
         a = a * dry_amp + a * ro * ring;
         l = a;
         r = a;
-        inst_tick(&l, &r, white);        /* the instrument on top */
-        /* the planet's voice: its struck partials, Jupiter's swell (a low, filtered saw) */
-        for (j = 0; j < NPING; j++) {
-            ping_t *p = &e.ping[j];
-            if (p->amp < 0.0005f)
-                continue;
-            if (p->wait > 0) {
-                p->wait--;
-                continue;
-            }
-            p->ph += p->inc;
-            if (p->minc) {
-                p->mph += p->minc;
-                v += wt(SINE, p->ph + (uint32_t)(int32_t)(wt(SINE, p->mph) * p->idx * 683565275.0f)) * p->amp;
-                p->idx *= p->idec;
-            } else {
-                v += wt(SINE, p->ph) * p->amp;
-            }
-            p->amp *= p->dec;
+        {   /* the pad on top (PULSAR's gate on it), the star voices */
+            float pl = 0.0f, pr = 0.0f, sl = 0.0f, sr = 0.0f, g = rhythm_tick(&l, &r);
+            pads_tick(&pl, &pr, white, (e.p0 + e.p1 + e.p2 + white * 0.1848f) * 0.25f);
+            stars_tick(&sl, &sr, white);
+            l += pl * g + sl * e.level;
+            r += pr * g + sr * e.level;
         }
-        e.alp += (v - e.alp) * 0.5f;     /* the plucks rounded */
-        v = e.alp;
-        l += v * e.level;
-        r += v * e.level;
         {   /* the chorus: each side read back from a short line, its delay swaying slowly, the two a quarter turn apart */
             float pl, pr2, wl, wr, fl, fr2;
             uint32_t il, ir;
@@ -703,6 +445,20 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
         outR = sat((r * e.dry + dR * e.delay) * 1.15f);
         /* the reverb: four all-passes smear the input, then four long lines mixed by a Hadamard matrix */
         rin = (outL + outR) * 0.3f;
+        if (e.shim > 0.001f) {           /* AURORA: the tail an octave up (two taps sweeping through a grain), fed back */
+            float ph = e.shph, s1, s2, p1, p2;
+            uint32_t i1, i2;
+            e.shph += 1.0f / SH_G;
+            e.shph -= (float)(int32_t)e.shph;
+            p1 = SH_G * (1.0f - ph);
+            p2 = SH_G * (1.0f - (ph + 0.5f - (float)(int32_t)(ph + 0.5f)));
+            i1 = (uint32_t)p1;
+            i2 = (uint32_t)p2;
+            s1 = (float)sh_line[(sh_i - i1) & (SH_N - 1u)] * (1.0f / 32768.0f) * (0.5f - 0.5f * wt(SINE, (uint32_t)(ph * 4294967296.0f) + 0x40000000u));
+            s2 = (float)sh_line[(sh_i - i2) & (SH_N - 1u)] * (1.0f / 32768.0f)
+                 * (0.5f - 0.5f * wt(SINE, (uint32_t)((ph + 0.5f) * 4294967296.0f) + 0x40000000u));
+            rin += (s1 + s2) * e.shim;
+        }
         for (j = 0; j < 4u; j++) {
             float z = (float)ap_line[j][ap_i[j]] * (1.0f / 32768.0f), w = rin + 0.6f * z;
             ap_line[j][ap_i[j]] = (int16_t)(fm_clampf(w, -1.0f, 1.0f) * 32767.0f);
@@ -723,6 +479,8 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
             if (++rv_i[j] == RV_LEN[j])
                 rv_i[j] = 0;
         }
+        sh_line[sh_i] = (int16_t)(fm_clampf((o[0] + o[1] + o[2] + o[3]) * 0.5f, -1.0f, 1.0f) * 32767.0f);
+        sh_i = (sh_i + 1u) & (SH_N - 1u);
         outL += (o[0] + o[2]) * verb;
         outR += (o[1] + o[3]) * verb;
         outL = outL / (1.0f + fm_fabsf(outL) * 0.4f);
