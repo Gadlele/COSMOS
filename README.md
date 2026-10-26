@@ -30,8 +30,9 @@ this week, a geomagnetic storm tears it apart now and then, the clouds and the s
 
 ## Licence
 
-COSMOS's own code is under the [0BSD licence](LICENSE): use it for anything, no conditions. The files it takes
-from fm1-base and fm1-radio stay under their MPL-2.0, and the libraries they bring keep theirs (JieLi's WiFi
-libraries Apache-2.0, BearSSL MIT).
+COSMOS is free software under the [GNU General Public License v3.0 or later](LICENSE). You may use, study, change
+and share it; versions you distribute must stay under the GPL, with their source. The files it takes from
+fm1-base and fm1-radio stay under their MPL-2.0, which the GPL allows, and the libraries they bring keep theirs
+(JieLi's WiFi libraries Apache-2.0, BearSSL MIT).
 
 M-VAVE and FM-1 are trademarks of their owners. COSMOS is an independent project.
