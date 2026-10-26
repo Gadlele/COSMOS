@@ -84,9 +84,9 @@ SKY 100%         UPD 12 MIN
 
 ### Splash
 
-At power-on, scattered stars gather into the word COSMOS (Terminus 32 bold, every other pixel a star, at twice the
-size: 398 stars), hold, and fade into the sky: 4.4 s. See `tools/splash_preview.py` and `docs/img/splash.gif`;
-the firmware draws it in `app_splash` (fm1-base's APP_SPLASH).
+At power-on, scattered stars gather into the word COSMOS, set in Michroma (212 pixels wide, a star on every other
+pixel: 397 stars), hold, and fade into the sky: 4.4 s. See `tools/splash_preview.py` and `docs/img/splash.gif`;
+the firmware draws it in `app_splash` (fm1-base's APP_SPLASH) from the stars' positions alone.
 
 ### The sky behind the text
 

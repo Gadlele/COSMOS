@@ -1,41 +1,31 @@
 """COSMOS's splash, as a GIF: scattered stars gather into the word COSMOS, hold, and fade.
-  python3 tools/splash_preview.py OUT.gif ter-u32b.bdf
-Needs Pillow; the BDF is fm1-base's assets/fonts/ter-u32b.bdf. The firmware draws the same (app_splash)."""
+  python3 tools/splash_preview.py OUT.gif [FONT.ttf]
+Needs Pillow. The word is set in Michroma (third_party/fonts/michroma, SIL OFL 1.1), 212 pixels wide, and a star
+sits on every other pixel of it (a 2-pixel grid: dotted, not solid). The firmware draws the same from the stars'
+positions alone (app_splash)."""
 import math, random, sys
-from PIL import Image
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
 
-OUT, BDF = sys.argv[1], sys.argv[2]
+OUT = sys.argv[1]
+FONT = sys.argv[2] if len(sys.argv) > 2 else str(Path(__file__).resolve().parents[1] / "third_party" / "fonts" /
+                                                 "michroma" / "Michroma-Regular.ttf")
 W, FPS = 240, 20
 WORD = "COSMOS"
+WIDE = 212                                       # the word's width on the screen, pixels
 
 
-def glyphs(path):
-    g, cur, rows, enc, w = {}, None, None, 0, 16
-    for line in open(path):
-        p = line.split()
-        if not p:
-            continue
-        if p[0] == "ENCODING":
-            enc = int(p[1])
-        elif p[0] == "BITMAP":
-            rows = []
-        elif p[0] == "ENDCHAR":
-            g[chr(enc)] = rows
-            rows = None
-        elif rows is not None:
-            rows.append(int(p[0], 16))
-    return g
+def word_targets():
+    f = ImageFont.truetype(FONT, 44)
+    m = Image.new("L", (W * 2, 120), 0)
+    ImageDraw.Draw(m).text((0, 10), WORD, font=f, fill=255)
+    m = m.crop(m.getbbox())
+    m = m.resize((WIDE, max(1, round(m.height * WIDE / m.width))), Image.LANCZOS)
+    ox, oy, mp = (W - m.width) // 2, (W - m.height) // 2, m.load()
+    return [(ox + x, oy + y) for y in range(0, m.height, 2) for x in range(0, m.width, 2) if mp[x, y] > 128]
 
 
-G = glyphs(BDF)
-# the word in Terminus 32 bold (16 x 32 a letter), every other pixel a star (a checkerboard: dotted, not solid),
-# at twice the size: 192 x 64, centred
-targets = []
-for i, ch in enumerate(WORD):
-    for y, bits in enumerate(G[ch]):
-        for x in range(16):
-            if bits >> (15 - x) & 1 and (x + y) % 2 == 0:
-                targets.append((24 + (i * 16 + x) * 2, 88 + y * 2))
+targets = word_targets()
 rng = random.Random(3)
 stars = []
 for tx, ty in targets:
