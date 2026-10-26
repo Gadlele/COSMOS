@@ -115,8 +115,8 @@ static struct {
     int pick;                            /* WiFi: the network picked in the list */
     char ssid[33], pass[64];             /* the one being joined, its password as typed */
     int plen, ch;                        /* the password's length, the character SELECT is on */
-    uint32_t splash_t0;                  /* the splash running since its first frame (plat_ms; 0: over) */
-    int splash_on;                       /* the splash still to run or running */
+    uint32_t splash_t0;                  /* the splash running since its first frame (plat_ms) */
+    int splash_on;                       /* the splash: 1 still to start, 2 running, 0 over */
     uint32_t splash_btn;                 /* the buttons held at its start: only a new press cuts it */
 } ui = {.rnd = 0x2545F491u};
 
@@ -1446,7 +1446,6 @@ void app_ui_init(void)
     lcd_fill(0, 0, 240, 240, C_BLACK);
     ui.splash_on = 1;                    /* the stars gather first; WiFi starts after them (its start holds the
                                           * loop and the panel's scan for a second) */
-    ui.splash_t0 = 0;
     ui.touched = plat_ms();              /* the readings show at the start */
 }
 
@@ -1455,8 +1454,10 @@ void app_frame(void)
     uint32_t now = plat_ms();
     if (ui.splash_on) {                  /* the splash: timed from its first frame; a new press cuts it */
         uint32_t b = plat_buttons();
-        if (!ui.splash_t0) {
-            ui.splash_t0 = now | 1u;
+        if (ui.splash_on == 1) {         /* its first frame: the clock starts now (exactly now: the time since is
+                                          * unsigned, and a start even 1 ms ahead would read as 49 days gone) */
+            ui.splash_on = 2;
+            ui.splash_t0 = now;
             ui.splash_btn = b;
             ui.last_frame = now - 50u;
         }
