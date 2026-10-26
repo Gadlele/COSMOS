@@ -53,15 +53,13 @@ screen; when one sets or the sky hides it, it goes. A planet brings four things:
 | Jupiter | 183.58 Hz (F#) | A | I IV II V | deep and warm | SWELL: a sub below the sub, breathing | 7.6 s |
 | Saturn | 147.85 Hz (D) | B | I III VII VI | metallic, ringed | RINGS: an inharmonic chime with a long tail | 11.9 s |
 
-## Notes
+## Chords
 
-With no planet, the keyboard is split: the left half (F3..F#4) sets drone 1's note, the right half (G4..G5) drone
-2's, freely; each partner sits at the pressure's interval (or an octave when SEL leaves the pressure out). With a
-planet, the keys play its scale only: a key moves its drone to the nearest note of the scale while it is held and for
-10 s after it is let go, then the chords go on. OCT- and OCT+ move everything an octave.
-
-PLAY stops the sky: the drones and the planet's voice fade out. The keys still play: a key makes its drone sound
-(left half drone 1, right half drone 2) while it is held and for 10 s after, then fades it out.
+The drones always play a chord: drone 1 its root, its partner the fifth; drone 2 the third (a suspended fourth when
+the pressure is deep down), its partner coloured by the pressure (the octave high and steady, the seventh as it
+falls, the ninth deep down), in the sun's mode. With no planet the chord stands on the last key's note; with one,
+its four go round, one every 10 s, and a key plays the chord of the scale on its note for a while (held and 10 s
+after). SEL in the settings' PRESS HARMONY leaves the pressure out: plain triads.
 
 ## Sources and what they do
 
@@ -99,14 +97,17 @@ For players who do not want to connect it:
 
 ## Controls
 
-- **Keys:** with no planet, the left half drone 1's note and the right half drone 2's; with one, its scale
-- **SELECT:** a planet on the screen (its note, its chords, its engine, its voice)
-- **HOME:** the settings: latitude, longitude, UTC offset, summer time, date, time (local), weather (MANUAL or
-  RANDOM), tuning (COSMIC, EQUAL or NATURAL)
-- **SEL:** the pressure in the harmony, or not
-- **SKY knob:** how much the sky drives the sound, 0 (manual) to 100 (all sky)
-- **Volume**
-- **Battery**: on the screen's bottom line, four bars (orange when empty), USB when a computer powers it
+| Button | |
+| --- | --- |
+| **HOME** | back to nature: the sun and the moon as they are, the weather as it comes (fetched over WiFi in stage 3; until then, or offline, drifting by itself) |
+| **EDIT** | everything by hand, the readings held on the screen: K1 the sun's height, K2 the clouds, K3 the pressure, K4 Kp, ALGO the moon's cycle, PRESET the pressure's trend |
+| **SEL** | the next planet on the screen (the seven classical ones), or none |
+| **GLO** | the settings: latitude, longitude, UTC offset, summer time, date, time (local), the pressure in the harmony, the tuning (COSMIC, EQUAL or NATURAL) |
+| **PLAY** | the sky stopped or playing; stopped, a key still sounds its chord, held and for 10 s after |
+| **OCT− / OCT+** | the octave |
+| **Keys** | the chord on the key's note: with no planet the new root; with one, the chord of its scale on the nearest degree, held and for 10 s after |
+| **MASTER** | the volume |
+| **Battery** | on the readings' and the settings' bottom lines |
 
 ## Screen
 

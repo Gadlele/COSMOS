@@ -6,24 +6,24 @@
  * on the whole square. The sun, the moon and the clouds decide what shows (a full moon or a daylight sky hides the
  * faint stars); Kp makes the stars twinkle. Touch anything and the readings fade in over the sky in white Terminus,
  * hold, and fade out after two seconds.
- *   the sun's height and the moon's cycle come from the sky; the weather from the knobs (MANUAL) or drifting by
- *   itself (RANDOM): K2 CLOUDS (%)   K3 PRESS (hPa)   K4 KP   PRESET the pressure's trend (turning one: MANUAL)
- *   SELECT one of the seven planets on the screen (the Sun and the Moon among them), or none
- *   SEL the pressure in the harmony, or not   OCT- / OCT+ the octave   PLAY the drones on or off   MASTER the volume
- *   HOME the settings
- * THE HARMONY. With no planet, the keyboard's left half (F3..F#4) sets drone 1's note and its right half (G4..G5)
- * drone 2's, freely. A chosen planet brings its note (its period raised by octaves into hearing: Cousto's cosmic
- * octave, exact under TUNING COSMIC, the nearest tempered note under EQUAL; under NATURAL a natural note each, the
- * spheres' classical order from the Moon's C to Saturn's B), a scale in the mode the sun's height
- * gives (Phrygian at night .. Lydian at noon), and four chords of its own on that scale, one every 10 s: drone 1 the
- * chord's root, its partner the fifth, drone 2 the third, its partner coloured by the pressure (the octave high and
- * steady, the seventh as it falls, a suspension and the ninth deep down). The keys then play the scale only: a key
- * moves its drone to the nearest note of the scale while held and for 10 s after, then the chords go on.
- * PLAY stops the sky (the drones and the planet's voice fade out); the keys still play: a key makes its drone sound
- * while held and for 10 s after.
- * THE SETTINGS: latitude, longitude, the offset from UTC, summer time, the date and the time (local), the weather, the
- * tuning. SELECT picks a row, ALGO changes it a step, PRESET a big step, HOME saves and goes back. Without WiFi
- * (stage 3) the clock runs from the time set here.
+ * THE BUTTONS
+ *   HOME   back to nature: the sun and the moon as they are, the weather as it comes (fetched with WiFi, stage 3;
+ *          until then drifting by itself)
+ *   EDIT   everything by hand, the readings held on the screen: K1 the sun's height, K2 the clouds, K3 the pressure,
+ *          K4 Kp, ALGO the moon's cycle, PRESET the pressure's trend
+ *   SEL    the next planet on the screen (the seven classical ones, the Sun and the Moon among them), or none
+ *   GLO    the settings      PLAY the sky stopped or playing      OCT- / OCT+ the octave      MASTER the volume
+ * THE HARMONY. The drones always play a chord: drone 1 its root, its partner the fifth, drone 2 the third (a fourth,
+ * suspended, when the pressure is deep down), its partner coloured by the pressure (the octave high and steady, the
+ * seventh as it falls, the ninth deep down), in the mode the sun's height gives (Phrygian at night .. Lydian at
+ * noon). With no planet the chord is on the last key's note. A chosen planet brings its note (its period raised by
+ * octaves into hearing: Cousto's cosmic octave, exact under TUNING COSMIC, the nearest tempered note under EQUAL;
+ * under NATURAL a natural note each, the spheres' classical order from the Moon's C to Saturn's B) and four chords of
+ * its own on its scale, one every 10 s; a key then plays the chord of the scale on its note, held and for 10 s after,
+ * and the four come back. With the sky stopped, a key still sounds its chord, held and for 10 s after.
+ * THE SETTINGS (GLO): latitude, longitude, the offset from UTC, summer time, the date and the time (local), the
+ * pressure in the harmony, the tuning. SELECT picks a row, ALGO changes it a step, PRESET a big step, GLO or HOME
+ * saves and goes back. Without WiFi (stage 3) the clock runs from the time set here.
  * Part of the unity build (device/unity.c), after the platform: gfx.c is in scope. */
 #include "fastmath.h"
 #include "dsp/engine.h"
@@ -38,9 +38,8 @@ extern const uint32_t shim_heap_size;
 #define C_LOW RGB(80, 80, 80)
 #define C_STORM RGB(255, 179, 138)
 #define FIRST_KEY_NOTE 53                /* key 0 is F3 */
-#define SPLIT_KEY 14                     /* keys 0..13 (F3..F#4) drone 1, 14..26 (G4..G5) drone 2 */
 #define DEFAULT_UNIX 1793037600u         /* 2026-10-26 18:00 UTC: until a time is set */
-#define SET_MAGIC 0x434F5332u            /* "COS2" */
+#define SET_MAGIC 0x434F5333u            /* "COS3" */
 #define FADE_HOLD_MS 2300u
 #define CHORD_MS 10000u                  /* a chord every 10 s */
 #define KEY_HOLD_MS 10000u               /* a key's note stays 10 s after it is let go */
@@ -51,11 +50,11 @@ static struct {                          /* kept in the store (OBJ_SETTINGS) */
     uint32_t unix_saved;                 /* the clock when it was saved */
     int16_t lat100, lon100;              /* the place: hundredths of a degree, north and east positive */
     int8_t utc4;                         /* the offset from UTC, quarter hours */
-    uint8_t summer, weather, linked;     /* summer time; weather 0 MANUAL, 1 RANDOM; the pressure in the harmony */
+    uint8_t summer, manual, linked;      /* summer time; EDIT (else HOME: nature); the pressure in the harmony */
     uint8_t octave, tuning;              /* tuning 0 COSMIC, 1 EQUAL, 2 NATURAL */
-    uint8_t pc[2];                       /* the drones' notes with no planet: pitch classes */
+    uint8_t pc[2];                       /* with no planet, the chord's root: a pitch class ([1] unused) */
     int8_t trend, pad[3];
-    float clouds, press, kp;
+    float clouds, press, kp, sun, moon;  /* the sky by hand (EDIT) */
 } set;
 
 static sky_t sky = {.sun = 20.0f, .clouds = 30.0f, .press = 1015.0f, .trend = 0, .kp = 1.67f, .moon = 0.4f,
@@ -83,8 +82,8 @@ static struct {
     uint32_t chords_t0;                  /* when the chosen planet's chords began */
     int32_t chord;                       /* the chord playing, 0..3 */
     int32_t mode;                        /* the scale's mode, 0 Phrygian .. 5 Lydian */
-    int32_t key_deg[2];                  /* each drone's key: the scale degree it plays */
-    uint32_t key_until[2];               /* until when (plat_ms); held keys keep pushing it on */
+    int32_t key_deg;                     /* a key's chord: its scale degree */
+    uint32_t key_until;                  /* until when (plat_ms); a held key keeps pushing it on */
 } ui = {.rnd = 0x2545F491u};
 
 static uint32_t unix_now(void) { return ui.clock_unix + (plat_ms() - ui.clock_ms) / 1000u; }
@@ -177,47 +176,34 @@ static int32_t key_degree(int32_t note, float root)
     return best;
 }
 
-/* what the drones play now: free notes with no planet; else the planet's chord, or a key's note of the scale */
+/* what the drones play: a chord, on the last key's note with no planet; else the planet's four in turn, or a key's
+ * chord of its scale */
 static void harmony(void)
 {
     uint32_t now = plat_ms();
-    int32_t p = sky.planet, i;
-    if (p == PL_NONE) {                  /* drone 1 in the octave, drone 2 the first such note above it */
-        int32_t n0 = 12 * (set.octave + 1) + set.pc[0], n1 = 12 * (set.octave + 1) + set.pc[1];
-        if (n1 <= n0)
-            n1 += 12;
-        sky.hz[0] = 440.0f * fm_exp2f((float)(n0 - 69) / 12.0f);
-        sky.hz[1] = 440.0f * fm_exp2f((float)(n1 - 69) / 12.0f);
-        sky.pr[0] = sky.pr[1] = 0.0f;    /* the pressure's interval */
-        sky.root_hz = 0.0f;
-        return;
-    }
-    {
-        float root = root_hz(p), t = sky.linked ? tension(&sky) : -1.0f;
-        int32_t d = PROG[p][ui.chord], a = d, b = d + 2, top;
-        ui.mode = mode_of_sun(sky.sun);
+    int32_t p = sky.planet, i, a, b, top, d = 0;
+    float root, t = sky.linked ? tension(&sky) : -1.0f;
+    ui.mode = mode_of_sun(sky.sun);
+    if (p == PL_NONE) {
+        root = 440.0f * fm_exp2f((float)(12 * (set.octave + 1) + set.pc[0] - 69) / 12.0f);
+    } else {
+        root = root_hz(p);
         ui.chord = (int32_t)((now - ui.chords_t0) / CHORD_MS % 4u);
-        d = PROG[p][ui.chord];
-        a = d;
-        b = t >= 1.3f ? d + 3 : d + 2;   /* deep low pressure: a suspension */
-        if (now < ui.key_until[0])
-            a = ui.key_deg[0];
-        if (now < ui.key_until[1])
-            b = ui.key_deg[1] + 7;       /* drone 2's keys an octave over drone 1's */
-        while (semis(b) <= semis(a))
-            b += 7;
-        /* drone 2's partner: the octave of the root high and steady, the seventh as it falls, the ninth deep down */
-        top = t < 0.3f ? a + 7 : t < 1.3f ? b + 4 : b + 5;
-        while (semis(top) <= semis(b))
-            top += 7;
-        sky.hz[0] = root * ratio(semis(a));
-        sky.hz[1] = root * ratio(semis(b));
-        sky.pr[0] = ratio(semis(a + 4) - semis(a));   /* drone 1's partner: the fifth */
-        sky.pr[1] = ratio(semis(top) - semis(b));
-        sky.root_hz = root;
-        for (i = 0; i < 7; i++)
-            sky.scale[i] = MODES[ui.mode][i];
+        d = now < ui.key_until ? ui.key_deg : PROG[p][ui.chord];
     }
+    a = d;
+    b = t >= 1.3f ? d + 3 : d + 2;       /* deep low pressure: a suspension */
+    /* drone 2's partner: the octave of the root high and steady, the seventh as it falls, the ninth deep down */
+    top = t < 0.3f ? a + 7 : t < 1.3f ? b + 4 : b + 5;
+    while (semis(top) <= semis(b))
+        top += 7;
+    sky.hz[0] = root * ratio(semis(a));
+    sky.hz[1] = root * ratio(semis(b));
+    sky.pr[0] = ratio(semis(a + 4) - semis(a));   /* drone 1's partner: the fifth */
+    sky.pr[1] = ratio(semis(top) - semis(b));
+    sky.root_hz = root;
+    for (i = 0; i < 7; i++)
+        sky.scale[i] = MODES[ui.mode][i];
 }
 
 static void defaults(void)
@@ -228,7 +214,7 @@ static void defaults(void)
     set.lon100 = 1250;
     set.utc4 = 4;
     set.summer = 0;
-    set.weather = 1;
+    set.manual = 0;
     set.linked = 1;
     set.octave = 2;
     set.tuning = 0;
@@ -238,6 +224,8 @@ static void defaults(void)
     set.clouds = 30.0f;
     set.press = 1015.0f;
     set.kp = 1.67f;
+    set.sun = 20.0f;
+    set.moon = 0.4f;
 }
 static void save(void)
 {
@@ -247,6 +235,8 @@ static void save(void)
     set.kp = sky.kp;
     set.trend = (int8_t)sky.trend;
     set.linked = (uint8_t)sky.linked;
+    set.sun = sky.sun;
+    set.moon = sky.moon;
     plat_store_save(OBJ_SETTINGS, &set, sizeof set);
     ui.last_save = plat_ms();
     ui.dirty = 0;
@@ -264,6 +254,8 @@ void app_init(void)
     sky.kp = set.kp;
     sky.trend = set.trend;
     sky.linked = set.linked;
+    sky.sun = set.sun;
+    sky.moon = set.moon;
     eng_ok = eng_init() == 0;            /* the delay and the reverb, before WiFi takes the heap */
     harmony();
     eng_sky(&sky);
@@ -324,8 +316,10 @@ static void sky_update(void)
     float lat = (float)set.lat100 / 100.0f, lon = (float)set.lon100 / 100.0f;
     int32_t i, x, y;
     astro_now((int32_t)(unix_now() - (uint32_t)J2000_UNIX), lat, lon, &now_sky);
-    sky.sun = now_sky.sun_alt;
-    sky.moon = now_sky.moon;
+    if (!set.manual) {                  /* nature; EDIT leaves them in the hands */
+        sky.sun = now_sky.sun_alt;
+        sky.moon = now_sky.moon;
+    }
     /* the faintest star the sky lets through: daylight, twilight, the moon if it is up, the clouds */
     limit = 4.6f;
     if (sky.sun > -6.0f)
@@ -335,7 +329,7 @@ static void sky_update(void)
     else if (sky.sun > -18.0f)
         limit = 3.0f;
     if (now_sky.moon_pos.alt > 0.0f)
-        limit -= 0.8f * now_sky.moon_lit;
+        limit -= 0.8f * (1.0f - fm_cosf(FM_TWO_PI * sky.moon)) * 0.5f;
     limit -= sky.clouds / 100.0f * 4.0f;
     for (i = 0; i < (int32_t)NSTARS; i++) {
         altaz_t p = astro_altaz((float)STARS[i].ra * (FM_TWO_PI / 65536.0f), (float)STARS[i].dec * 0.000174532925f,
@@ -510,11 +504,9 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
     q = put_int(v, round_f(sky.press));
     put(q, sky.trend < 0 ? " v" : sky.trend > 0 ? " ^" : " =");
     field(l, "PRESS", v, 12);
-    if (sky.planet != PL_NONE) {         /* the chord's colour */
+    {   /* the chord's colour */
         float t = sky.linked ? tension(&sky) : -1.0f;
         field(r, "CHORD", t < 0.3f ? "TRIAD" : t < 1.3f ? "7TH" : "SUS 9", 12);
-    } else {
-        field(r, "PARTNER", sky.linked ? m.interval_name : "8VA", 12);
     }
     line2(lines[4], l, r);
     q = put_int(v, round_f(sky.kp * 10.0f) / 10);
@@ -560,8 +552,8 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
         line2(lines[9], l, v);
         col[9] = C_MID;
     }
-    copy(lines[10], set.weather ? "RANDOM WEATHER" : "MANUAL WEATHER", 32);
-    col[10] = C_LOW;
+    copy(lines[10], set.manual ? "EDIT: THE SKY BY HAND" : "HOME: NATURE, RANDOM WEATHER", 32);
+    col[10] = set.manual ? C_MID : C_LOW;
 }
 
 static uint16_t grey(int32_t g)
@@ -620,8 +612,8 @@ static void sky_frame(void)
             }
         }
         if (pl_x[PL_MOON] >= 0 && pl_y[PL_MOON] >= y0 - 5 && pl_y[PL_MOON] < y0 + 53) {   /* the moon in its phase */
-            float k = now_sky.moon_lit;
-            int waxing = now_sky.moon < 0.5f, dx, dy;
+            float k = (1.0f - fm_cosf(FM_TWO_PI * sky.moon)) * 0.5f;   /* its phase: nature's, or EDIT's */
+            int waxing = sky.moon - fm_floorf(sky.moon) < 0.5f, dx, dy;
             for (dy = -4; dy <= 4; dy++)
                 for (dx = -4; dx <= 4; dx++) {
                     float half, edge;
@@ -669,7 +661,7 @@ static void sky_frame(void)
 static void settings_frame(void)
 {
     static const char *const LABEL[NROWS] = {"LATITUDE", "LONGITUDE", "UTC", "SUMMER TIME", "DATE", "TIME",
-                                             "WEATHER", "TUNING"};
+                                             "PRESS HARMONY", "TUNING"};
     char t[32], v[24], l[24], *q;
     int32_t y, mo, d, h, mi, i;
     local_time(unix_now(), &y, &mo, &d, &h, &mi);
@@ -715,7 +707,7 @@ static void settings_frame(void)
                 put2(q, mi);
                 break;
             case 6:
-                copy(v, set.weather ? "RANDOM" : "MANUAL", 24);
+                copy(v, sky.linked ? "ON" : "OFF", 24);
                 break;
             default:
                 copy(v, set.tuning == 0 ? "COSMIC" : set.tuning == 1 ? "EQUAL" : "NATURAL", 24);
@@ -728,7 +720,7 @@ static void settings_frame(void)
             copy(t, "SELECT ROW  ALGO STEP", 32);
             c = C_MID;
         } else if (i == 12) {
-            copy(t, "PRESET BIG  HOME BACK", 32);
+            copy(t, "PRESET BIG  GLO BACK", 32);
             c = C_MID;
         } else if (i == 13) {
             int b = plat_battery();
@@ -783,7 +775,7 @@ static void settings_change(int32_t step, int big)
         clock_set(u + (uint32_t)(step * (big ? 3600 : 60)));
         break;
     case 6:
-        set.weather = !set.weather;
+        sky.linked = !sky.linked;
         break;
     default:
         set.tuning = (uint8_t)((set.tuning + 3 + (step > 0 ? 1 : -1)) % 3);
@@ -794,6 +786,14 @@ static void settings_change(int32_t step, int big)
 }
 
 /* ------------------------------------------------------------------- input --- */
+static void to_screen(int sc)
+{
+    if (ui.screen == 1 && ui.dirty)
+        save();
+    ui.screen = sc;
+    lcd_fill(0, 0, 240, 240, C_BLACK);
+}
+
 static void input(void)
 {
     uint32_t btn = plat_buttons(), down = btn & ~ui.btn, keys = plat_keys(), kdown = keys & ~ui.keys, now = plat_ms();
@@ -802,14 +802,25 @@ static void input(void)
     int k;
     ui.btn = btn;
     ui.keys = keys;
-    (void)e1;
     if (btn || keys || e1 || e2 || e3 || e4 || ea || ep || es)
         ui.touched = now;
-    if (down >> B_HOME & 1u) {
-        if (ui.screen == 1 && ui.dirty)
-            save();
-        ui.screen = !ui.screen;
-        lcd_fill(0, 0, 240, 240, C_BLACK);
+    if (down >> B_GLO & 1u) {            /* the settings, and back */
+        to_screen(!ui.screen);
+        return;
+    }
+    if (down >> B_HOME & 1u) {           /* back to nature */
+        to_screen(0);
+        set.manual = 0;
+        ui.dirty = 1;
+        ui.last_sky = 0;
+        app_say("HOME", "NATURE");
+        return;
+    }
+    if (down >> B_EDIT & 1u) {           /* everything by hand, from where nature left it */
+        to_screen(0);
+        set.manual = 1;
+        ui.dirty = 1;
+        app_say("EDIT", "BY HAND");
         return;
     }
     if (ui.screen == 1) {
@@ -821,54 +832,53 @@ static void input(void)
             settings_change(ep > 0 ? 1 : -1, 1);
         return;
     }
-    /* the weather on the knobs: turning one takes it out of RANDOM */
-    if (e2 || e3 || e4 || ep) {
-        if (set.weather) {
-            set.weather = 0;
-            app_say("WEATHER", "MANUAL");
+    if (set.manual) {                    /* EDIT: the knobs are the sky */
+        if (e1) sky.sun = fm_clampf(sky.sun + (float)e1 * 2.0f, -40.0f, 72.0f);
+        if (e2) sky.clouds = fm_clampf(sky.clouds + (float)e2 * 3.0f, 0.0f, 100.0f);
+        if (e3) sky.press = fm_clampf(sky.press + (float)e3 * 1.0f, 965.0f, 1045.0f);
+        if (e4) sky.kp = fm_clampf(sky.kp + (float)e4 * 0.33f, 0.0f, 9.0f);
+        if (ea) {
+            sky.moon += (float)ea * 0.01f;
+            sky.moon -= fm_floorf(sky.moon);
         }
-        ui.dirty = 1;
+        if (ep) sky.trend = (int32_t)fm_clampf((float)(sky.trend + (ep > 0 ? 1 : -1)), -1.0f, 1.0f);
+        if (e1 || e2 || e3 || e4 || ea || ep) {
+            ui.dirty = 1;
+            ui.last_sky = 0;             /* what shows follows at once */
+        }
+    } else if (e1 || e2 || e3 || e4 || ea || ep) {
+        app_say("NATURE", "EDIT TO CHANGE");
     }
-    if (e2) sky.clouds = fm_clampf(sky.clouds + (float)e2 * 3.0f, 0.0f, 100.0f);
-    if (e3) sky.press = fm_clampf(sky.press + (float)e3 * 1.0f, 965.0f, 1045.0f);
-    if (e4) sky.kp = fm_clampf(sky.kp + (float)e4 * 0.33f, 0.0f, 9.0f);
-    if (ep) sky.trend = (int32_t)fm_clampf((float)(sky.trend + (ep > 0 ? 1 : -1)), -1.0f, 1.0f);
-    if (es) {                            /* round the planets on the screen, and none */
-        int32_t p = sky.planet, n;
+    if (down >> B_SEL & 1u || es) {      /* the next planet on the screen, or none */
+        int32_t p = sky.planet, n, dir = es < 0 ? -1 : 1;
         for (n = 0; n < PL_N; n++) {
-            p = ((p + (es > 0 ? 1 : -1)) % PL_N + PL_N) % PL_N;
+            p = ((p + dir) % PL_N + PL_N) % PL_N;
             if (p == PL_NONE || pl_x[p] >= 0)
                 break;
         }
         if (p != sky.planet) {
             sky.planet = p;
             ui.chords_t0 = now;          /* its chords from the first */
-            ui.key_until[0] = ui.key_until[1] = 0;
+            ui.key_until = 0;
+            app_say(p == PL_NONE ? "NO PLANET" : planet_name(p), p == PL_NONE ? "" : planet_voice(p));
         }
-    }
-    if (down >> B_SEL & 1u) {
-        sky.linked = !sky.linked;
-        app_say("PRESSURE", sky.linked ? "IN HARMONY" : "LEFT OUT");
-        ui.dirty = 1;
     }
     if (down >> B_OCTDN & 1u && set.octave > 1) { set.octave--; ui.dirty = 1; }
     if (down >> B_OCTUP & 1u && set.octave < 4) { set.octave++; ui.dirty = 1; }
     if (down >> B_PLAY & 1u)
         sky.on = !sky.on;
-    for (k = 0; k < NKEYS; k++) {
-        int half = k >= SPLIT_KEY;
-        if (sky.planet == PL_NONE) {     /* free notes; with the sky stopped, the key sounds its drone a while */
-            if (kdown >> k & 1u) {
-                set.pc[half] = (uint8_t)((FIRST_KEY_NOTE + k) % 12);
-                ui.dirty = 1;
+    for (k = 0; k < NKEYS; k++)
+        if (keys >> k & 1u) {            /* a key's chord: held, and 10 s after */
+            if (sky.planet == PL_NONE) {
+                if (kdown >> k & 1u) {   /* its note the new root */
+                    set.pc[0] = (uint8_t)((FIRST_KEY_NOTE + k) % 12);
+                    ui.dirty = 1;
+                }
+            } else {                     /* the planet's scale only */
+                ui.key_deg = key_degree(FIRST_KEY_NOTE + k, root_hz(sky.planet));
             }
-            if (keys >> k & 1u)
-                ui.key_until[half] = now + KEY_HOLD_MS;
-        } else if (keys >> k & 1u) {     /* the scale only: held, and 10 s after */
-            ui.key_deg[half] = key_degree(FIRST_KEY_NOTE + k, root_hz(sky.planet));
-            ui.key_until[half] = now + KEY_HOLD_MS;
+            ui.key_until = now + KEY_HOLD_MS;
         }
-    }
 }
 void app_input_only(void) { input(); }
 
@@ -887,20 +897,20 @@ void app_frame(void)
         sky_update();
     }
     if (now - ui.last_weather >= 1000u) {   /* the random weather, at its real pace */
-        if (set.weather)
+        if (!set.manual)
             weather_tick((float)(now - ui.last_weather) / 3600000.0f);
         ui.last_weather = now;
     }
     harmony();                           /* the chords move on their own: every frame */
-    sky.drone_on[0] = sky.on || now < ui.key_until[0];   /* stopped, the keys still play */
-    sky.drone_on[1] = sky.on || now < ui.key_until[1];
+    sky.drone_on[0] = sky.on || now < ui.key_until;   /* stopped, a key still plays */
+    sky.drone_on[1] = sky.on || now < ui.key_until;
     eng_sky(&sky);
     if (ui.dirty && ui.screen == 0 && now - ui.touched > 10000u)   /* settings: saved once the hands are off */
         save();
     if (now - ui.last_save > 30u * 60u * 1000u)   /* and the clock, every half hour */
         save();
     {   /* the readings: in fast after a touch, held, then out slowly */
-        float to = now - ui.touched < FADE_HOLD_MS ? 1.0f : 0.0f;
+        float to = set.manual || now - ui.touched < FADE_HOLD_MS ? 1.0f : 0.0f;   /* EDIT: held */
         ui.alpha += (to - ui.alpha) * (to > ui.alpha ? 0.5f : 0.09f);
         if (ui.alpha < 0.01f && to == 0.0f)
             ui.alpha = 0.0f;
