@@ -27,6 +27,29 @@ Hadamard matrix, longer under clouds. The delay and the reverb take 103 KB of th
 
 No presets, no scenes: the sound moves continuously, never jumps.
 
+## Planets: engines and voices
+
+A planet on the screen can be chosen (SELECT). It changes the drones' engine and adds a rhythmic voice whose pulse
+comes from its orbit (2.2 s times the square root of the orbit in years). Until the sky is computed (stage 2), every
+planet can be chosen; then only those drawn on the screen.
+
+| Planet | Engine | Voice | Pulse |
+| --- | --- | --- | --- |
+| none | COSMOS's own | | |
+| Mercury | thin and bright: little sub, the filters open | GLINT: quick high sparks up the chord | 1.1 s |
+| Venus | sweet, glass: the oscillators near sines, the partner two octaves up and soft, no drive | BELLS: FM bells walking the pentatonic as a pentagram (minor under tension) | 1.7 s |
+| Mars | raw: driven hard, more noise | PULSE: a low double beat, a heartbeat | 3.0 s |
+| Jupiter | deep and warm: a heavy sub, the filters low | SWELL: a sub below the sub, breathing | 7.6 s |
+| Saturn | metallic: the partner at an inharmonic 2.76, more resonance | RINGS: an inharmonic chime with a long tail | 11.9 s |
+
+The engines glide into each other over about two seconds.
+
+## Notes
+
+The keyboard is split: the left half (F3..F#4) sets drone 1's note, the right half (G4..G5) drone 2's; OCT− and OCT+
+move both. Each drone's partner sits an interval above it: the pressure's (below), or an octave when the player
+leaves the pressure out of the harmony (SEL).
+
 ## Sources and what they do
 
 The slower a source changes, the more drastic its effect. Otherwise the sound stays too similar to itself.
@@ -34,7 +57,7 @@ The slower a source changes, the more drastic its effect. Otherwise the sound st
 | Source | Pace | Controls | Depth |
 | --- | --- | --- | --- |
 | **Moon phase** | ~29.5 days | The instrument's character: oscillator types and base timbre, plus the sub level | Drastic. Each phase is a different world: new moon, pure dark sines; waxing, soft waves; full, rich waves with full sub and high resonance; waning, rough metallic timbres. Morphs continuously over days. |
-| **Pressure** | days | Harmony: the interval between the drones and the mode | Drastic. High: consonances, bright colours. Falling: minor modes, tension. Very low (storm): tritone, clusters. The trend over the last hours counts more than the value. |
+| **Pressure** | days | Harmony: the interval of each drone's partner, and how fast they beat (SEL leaves it out: octaves) | Drastic. High: consonances, a slow beat. Falling: minor colours, tension, faster beating. Very low (storm): tritone, clusters. The trend over the last hours counts more than the value. |
 | **Kp index** | hours; storms are rare | Events: low Kp, a gentle drift; Kp 5 and up turns on ring mod and cross-modulation | Rare but drastic |
 | **Cloud cover** | hours | Space: reverb, delay, noise | Medium |
 | **Sun height** | continuous, daily | Light: filter cutoff | Gentle |
@@ -63,16 +86,19 @@ For players who do not want to connect it:
 
 ## Controls
 
-- **Keys:** the drones' base note
+- **Keys:** the left half drone 1's note, the right half drone 2's
+- **SELECT:** the planet (its engine and its voice)
+- **SEL:** the pressure in the harmony, or not
 - **SKY knob:** how much the sky drives the sound, 0 (manual) to 100 (all sky)
 - **Volume**
+- **Battery**: on the screen's bottom line, four bars (orange when empty), USB when a computer powers it
 
 ## Screen
 
 240×240, white on black, Terminus bitmap font (in fm1-base), English, text only.
 
 ```
-COSMOS                    A2
+COSMOS                 A2 E3
 ----------------------------
 SUN     +38°    FILTER    62
 CLOUDS   72%    REVERB    71

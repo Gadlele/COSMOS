@@ -2,9 +2,11 @@
  * Copyright (C) 2026 the COSMOS contributors */
 /* COSMOS, stage 1 (app.h): the engine, the sky on the knobs.
  *   K1 SUN (degrees)   K2 CLOUDS (%)   K3 PRESS (hPa)   K4 KP   ALGO MOON (around its cycle)   PRESET the pressure's
- *   trend   keys: the drones' note   OCT- / OCT+ its octave   PLAY the drones on or off   MASTER the volume
- * One screen, Terminus white on black: the sources on the left, what they do to the sound on the right, and at the
- * bottom what the chip spends (the audio's share of its time, the heap left).
+ *   trend   SELECT the planet (all of them until the sky is computed; then only those on the screen)   SEL the
+ *   pressure sets the partners' interval, or not   keys: the left half (F3..F#4) drone 1's note, the right half
+ *   (G4..G5) drone 2's   OCT- / OCT+ their octave   PLAY the drones on or off   MASTER the volume
+ * One screen, Terminus white on black: the sources on the left, what they do to the sound on the right, the planet,
+ * and at the bottom what the chip spends (the audio's share of its time, the heap left) and the battery.
  * Part of the unity build (device/unity.c), after the platform: gfx.c is in scope. */
 #include "fastmath.h"
 #include "dsp/engine.h"
@@ -15,25 +17,37 @@ extern const uint32_t shim_heap_size;
 #define C_TXT C_WHITE
 #define C_MID RGB(150, 150, 150)
 #define C_LOW RGB(80, 80, 80)
+#define C_STORM RGB(255, 179, 138)
 #define FIRST_KEY_NOTE 53                /* key 0 is F3 */
+#define SPLIT_KEY 14                     /* keys 0..13 (F3..F#4) drone 1, 14..26 (G4..G5) drone 2 */
 
 static sky_t sky = {.sun = 20.0f, .clouds = 30.0f, .press = 1015.0f, .trend = 0, .kp = 1.67f, .moon = 0.4f,
-                    .note = 45, .on = 1};
+                    .note = {45, 52}, .linked = 1, .planet = PL_NONE, .on = 1};
 static volatile int panic;
 static int eng_ok;
 
 static struct {
     uint32_t btn, keys;
     int32_t octave;                      /* the drones' octave: 1..4 (A2: 2) */
-    int32_t pc;                          /* their pitch class: 0 C .. 11 B */
+    int32_t pc[2];                       /* each drone's pitch class: 0 C .. 11 B */
     char msg[2][24];
     uint32_t msg_until;
     uint8_t redraw;
-} ui = {.octave = 2, .pc = 9};
+} ui = {.octave = 2, .pc = {9, 4}};
+
+/* each drone's note from its pitch class: drone 1 in the octave, drone 2 the first such note above drone 1 */
+static void notes(void)
+{
+    sky.note[0] = 12 * (ui.octave + 1) + ui.pc[0];
+    sky.note[1] = 12 * (ui.octave + 1) + ui.pc[1];
+    if (sky.note[1] <= sky.note[0])
+        sky.note[1] += 12;
+}
 
 void app_init(void)
 {
     eng_ok = eng_init() == 0;            /* the delay and the reverb, before WiFi takes the heap */
+    notes();
     eng_sky(&sky);
 }
 
@@ -133,11 +147,46 @@ static void field(char *out, const char *label, const char *value, int w)
     out[w] = 0;
 }
 
+#define Y0 32
 static void row(int i, const char *t, uint16_t c)
 {
     cv_begin(240, 16, C_BLACK);
     cv_text(8, 0, &FONT_S, t, c);
-    cv_blit(0, (uint32_t)(48 + i * 16));
+    cv_blit(0, (uint32_t)(Y0 + i * 16));
+}
+
+/* the bottom line: what the chip spends, and the battery drawn as one (four bars, or USB) */
+static void bottom(void)
+{
+    char t[32], v[16], *q;
+    int b = plat_battery(), i;
+    cv_begin(240, 16, C_BLACK);
+    if (plat_ms() < ui.msg_until) {
+        line2(t, ui.msg[0], ui.msg[1]);
+        cv_text(8, 0, &FONT_S, t, C_TXT);
+    } else if (!eng_ok) {
+        cv_text(8, 0, &FONT_S, "NO ROOM FOR DELAY AND REVERB", C_MID);
+    } else {
+        q = put(t, "CPU ");
+        q = put(put_int(q, (int32_t)plat_cpu_pct()), "%  HEAP ");
+        put(put_int(q, (int32_t)((shim_heap_size - shim_heap_used) / 1024u)), "K");
+        cv_text(8, 0, &FONT_S, t, C_MID);
+        if (b == 4) {
+            cv_text(232 - text_w(&FONT_S, "USB"), 0, &FONT_S, "USB", C_MID);
+        } else if (b >= 0) {             /* a battery: its outline, its tip, a bar for each quarter */
+            uint16_t c = b == 0 ? C_STORM : C_MID;
+            cv_rect(203, 3, 24, 1, c);
+            cv_rect(203, 12, 24, 1, c);
+            cv_rect(203, 3, 1, 10, c);
+            cv_rect(226, 3, 1, 10, c);
+            cv_rect(227, 6, 2, 4, c);
+            for (i = 0; i < 3; i++)
+                if (i < b)
+                    cv_rect(205 + i * 7, 5, 6, 6, c);
+            (void)v;
+        }
+    }
+    cv_blit(0, Y0 + 10 * 16);
 }
 
 static void draw(void)
@@ -147,8 +196,10 @@ static void draw(void)
     char l[32], r[32], v[16], t[32], *q;
     int32_t fil;
     sky_map(&sky, &m);
-    q = put(v, NOTE[ui.pc]);
-    put_int(q, ui.octave);
+    q = put(put(v, NOTE[sky.note[0] % 12]), "");
+    q = put_int(q, sky.note[0] / 12 - 1);
+    q = put(put(q, " "), NOTE[sky.note[1] % 12]);
+    put_int(q, sky.note[1] / 12 - 1);
     line2(t, sky.on ? "COSMOS" : "COSMOS  (OFF)", v);
     row(0, t, C_TXT);
     row(1, "----------------------------", C_LOW);
@@ -170,9 +221,9 @@ static void draw(void)
     q = put_int(v, round_f(sky.press));
     put(q, sky.trend < 0 ? " v" : sky.trend > 0 ? " ^" : " =");
     field(l, "PRESS", v, 12);
-    field(r, "INTERVAL", m.interval_name, 12);
+    field(r, "PARTNER", sky.linked ? m.interval_name : "8VA", 12);
     line2(t, l, r);
-    row(4, t, C_TXT);
+    row(4, t, sky.linked ? C_TXT : C_MID);
     q = put_int(v, round_f(sky.kp * 10.0f) / 10);
     q = put(q, ".");
     put_int(q, round_f(sky.kp * 10.0f) % 10);
@@ -183,26 +234,22 @@ static void draw(void)
         put_int(v, round_f(m.drift * 99.0f));
     field(r, "DRIFT", v, 12);
     line2(t, l, r);
-    row(5, t, m.storm > 0.0f ? RGB(255, 179, 138) : C_TXT);
+    row(5, t, m.storm > 0.0f ? C_STORM : C_TXT);
     field(l, "MOON", moon_name(sky.moon), 12);
     put_int(v, round_f(m.sub * 198.0f));
     field(r, "SUB", v, 12);
     line2(t, l, r);
     row(6, t, C_TXT);
     row(7, "----------------------------", C_LOW);
-    if (plat_ms() < ui.msg_until) {
-        line2(t, ui.msg[0], ui.msg[1]);
+    if (sky.planet != PL_NONE) {
+        field(l, "PLANET", planet_name(sky.planet), 16);
+        line2(t, l, planet_voice(sky.planet));
         row(8, t, C_TXT);
-    } else if (!eng_ok) {
-        row(8, "NO ROOM FOR DELAY AND REVERB", C_MID);
     } else {
-        q = put(v, "CPU ");
-        put(put_int(q, (int32_t)plat_cpu_pct()), "%");
-        q = put(r, "HEAP ");
-        put(put_int(q, (int32_t)((shim_heap_size - shim_heap_used) / 1024u)), "K");
-        line2(t, v, r);
-        row(8, t, C_MID);
+        row(8, "PLANET       (SELECT TURNS)", C_LOW);
     }
+    row(9, "----------------------------", C_LOW);
+    bottom();
 }
 
 /* ---- input */
@@ -210,7 +257,7 @@ static void input(void)
 {
     uint32_t btn = plat_buttons(), down = btn & ~ui.btn, keys = plat_keys(), kdown = keys & ~ui.keys;
     int32_t e1 = plat_enc(EN_K1), e2 = plat_enc(EN_K2), e3 = plat_enc(EN_K3), e4 = plat_enc(EN_K4);
-    int32_t ea = plat_enc(EN_ALGO), ep = plat_enc(EN_PRESET);
+    int32_t ea = plat_enc(EN_ALGO), ep = plat_enc(EN_PRESET), es = plat_enc(EN_SELECT);
     int changed = 0, k;
     ui.btn = btn;
     ui.keys = keys;
@@ -227,6 +274,15 @@ static void input(void)
         sky.trend = (int32_t)fm_clampf((float)(sky.trend + (ep > 0 ? 1 : -1)), -1.0f, 1.0f);
         changed = 1;
     }
+    if (es) {                            /* the planet: none, then Mercury .. Saturn, round */
+        sky.planet = ((sky.planet + (es > 0 ? 1 : -1)) % PL_N + PL_N) % PL_N;
+        changed = 1;
+    }
+    if (down >> B_SEL & 1u) {
+        sky.linked = !sky.linked;
+        app_say("PRESSURE", sky.linked ? "SETS PARTNER" : "OFF: OCTAVE");
+        changed = 1;
+    }
     if (down >> B_OCTDN & 1u && ui.octave > 1) { ui.octave--; changed = 1; }
     if (down >> B_OCTUP & 1u && ui.octave < 4) { ui.octave++; changed = 1; }
     if (down >> B_PLAY & 1u) {
@@ -234,12 +290,12 @@ static void input(void)
         changed = 1;
     }
     for (k = 0; k < NKEYS; k++)
-        if (kdown >> k & 1u) {           /* the key's pitch class: the drones move to it */
-            ui.pc = (FIRST_KEY_NOTE + k) % 12;
+        if (kdown >> k & 1u) {           /* the left half moves drone 1, the right half drone 2 */
+            ui.pc[k >= SPLIT_KEY] = (FIRST_KEY_NOTE + k) % 12;
             changed = 1;
         }
     if (changed) {
-        sky.note = 12 * (ui.octave + 1) + ui.pc;
+        notes();
         eng_sky(&sky);
         ui.redraw = 1;
     }
