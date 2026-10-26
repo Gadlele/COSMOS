@@ -8,7 +8,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Install · PROBE</title>
+<title>Install · COSMOS</title>
 <style>
   /* light: the coral and the dim brown darkened just enough for 4.5:1 on the cream (and white on the coral) */
   :root { --bg: #faf4e8; --fg: #48392f; --dim: #6e5c4b; --accent: #b84a1e; --on-accent: #fff; --bad: #a3271b; --focus: #1f6fd1; }
@@ -61,7 +61,7 @@
 <body>
 <main>
   <button type="button" class="lang" id="lang" lang="ja">日本語</button>
-  <h1>Install PROBE</h1>
+  <h1>Install COSMOS</h1>
   <p data-t="intro">Connect the FM-1 by USB, then press Install. It works in Chrome or Edge; the browser asks once to allow MIDI: allow it.</p>
   <p data-t="warn">Do not unplug the USB cable while writing.</p>
   <p class="small" data-t="direct"></p>
@@ -103,7 +103,7 @@
   <p id="reportstatus" role="status"></p>
   <label class="sr" for="report" data-t="reportlabel">Crash report</label>
   <textarea id="report" readonly hidden rows="14"></textarea>
-  <p><a href="../" data-t="manual">Back to PROBE</a></p>
+  <p><a href="../" data-t="manual">Back to COSMOS</a></p>
 </main>
 <dialog id="appask" aria-labelledby="appaskh">
   <form method="dialog">
@@ -125,7 +125,7 @@
   </form>
 </dialog>
 <footer>
-  <p class="small">PROBE is built on fm1-base and felucca-bsp, from Felucca by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener">Hügelton Instruments<span class="sr" data-t="newtab"> (opens in a new tab)</span></a>.<br>
+  <p class="small">COSMOS is built on fm1-base and felucca-bsp, from Felucca by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener">Hügelton Instruments<span class="sr" data-t="newtab"> (opens in a new tab)</span></a>.<br>
     Fonts: Barlow Semi Condensed (SIL OFL 1.1). M-VAVE and FM-1 are trademarks of their respective owners.<br>
     <span data-t="license"></span> <a href="https://github.com/Gadlele/COSMOS" target="_blank" rel="noopener">github.com/Gadlele/COSMOS<span class="sr" data-t="newtab"> (opens in a new tab)</span></a></p>
 </footer>
@@ -574,13 +574,13 @@ const TEXT = {
     newtab: "（新しいタブで開きます）", progress: "進行状況", pct: " {n}%",
     warn: "書き込み中は USB を抜かないでください。",
     install: "インストール", other: "English",
-    manual: "PROBE のページへ",
+    manual: "COSMOS のページへ",
     direct: "USB ケーブルはパソコンに直接つないでください。Probe や Transporter などの機材は不要です。",
     brick: "万一 FM-1 が起動しなくなった場合は、Mac から標準ファームウェアに戻せます:",
     bricklink: "起動しない FM-1 の復旧（英語）",
     back: "公式ファームウェアに戻すには、このページ下の「純正ファームウェアに戻す」か、M-VAVE 公式のアップデーター M-UPGRADE（Downloads → PC Software → M-UPGRADE）を使います。",
     stockh: "純正ファームウェアに戻す",
-    stockwhy: "M-VAVE の FM-1 ファームウェアを、PROBE（またはそのセーフモード）から同じ USB ケーブルで書き込みます。PROBE で保存したものは消えることがあります。",
+    stockwhy: "M-VAVE の FM-1 ファームウェアを、COSMOS（またはそのセーフモード）から同じ USB ケーブルで書き込みます。COSMOS で保存したものは消えることがあります。",
     stock1: "M-VAVE の FM-1 ファームウェアをダウンロード:",
     stock2: "ダウンロードしたファイルを選ぶ:",
     stock3: "FM-1 を USB で接続し、下のボタンを押す。",
@@ -605,19 +605,19 @@ const TEXT = {
     reporth: "不具合を報告する",
     reportwhy: "FM-1 がクラッシュしたら、電源を切らずに USB で接続し、下のボタンを押してください。クラッシュの記録は再起動では残りますが、電源を切ると消えます。表示された内容をコピーして、何をしていたかと一緒に送ってください。",
     reportread: "クラッシュの記録を読む", reportcopy: "コピー", reportlabel: "クラッシュの記録",
-    reportwait: "読み込み中…", reportnone: "応答がありません。FM-1 が PROBE を実行しているか確かめてください。",
+    reportwait: "読み込み中…", reportnone: "応答がありません。FM-1 が COSMOS を実行しているか確かめてください。",
     reportok: "読み込みました。コピーして送ってください。", reportcopied: "コピーしました。",
     mboot: "m-bootloader も書き込む: 電源を入れるときに PLAY を押したままでリカバリーメニュー、REC でアップデートモード。ファームウェアが起動しないときにも使えます。",
     mbootwhy: "Julius Vitkauskas によるオープンなブートローダー（MIT）。M-VAVE のブートローダーと置き換わり、ファームウェアを更新しても残ります。「純正ファームウェアに戻す」で M-VAVE のものに戻ります。メニューの WIPE USER DATA は、ファームウェアが保存したものをすべて消去します。",
     confirmh: "インストールの前に",
     confirm1: "書き込み中、FM-1 の画面には UPDATING と進み具合が出るか、暗いままになります。このページに「完了しました」と出るまで、USB ケーブルを抜いたり電源を切ったりしないでください。数分かかることがあります。",
     confirmboot: "ファームウェアの後に m-bootloader を書き込みます。FM-1 はその間にもう一度再起動します。",
-    bakh: "先にバックアップを。", confirmbak: "書き込みで PROBE に保存したものが消えることがあります。",
+    bakh: "先にバックアップを。", confirmbak: "書き込みで COSMOS に保存したものが消えることがあります。",
     bakok: "バックアップを取った（または残したいものはない）",
-    backuplink: "PROBE をバックアップする", confirmgo: "書き込む", confirmcancel: "キャンセル",
+    backuplink: "COSMOS をバックアップする", confirmgo: "書き込む", confirmcancel: "キャンセル",
     bootstart: "m-bootloader を書き込み中", bootwrite: "m-bootloader を書き込み中。FM-1 は自動で再起動します",
     bootdone: "完了しました（m-bootloader 付き）",
-    bootrefused: "PROBE はインストールされましたが、m-bootloader は書き込めませんでした。ほかは何も変わっていません。",
+    bootrefused: "COSMOS はインストールされましたが、m-bootloader は書き込めませんでした。ほかは何も変わっていません。",
     stockdamaged: "このファイルは壊れています。もう一度ダウンロードしてください。",
     pickh: "FM-1 が別の名前になっていませんか？",
     pickwhy: "パソコンが FM-1 のポートを別の機器の名前で表示することがあります（Mac は USB の差し込み口ごとに名前を覚えます）。このページが自動で問い合わせるのは、FM-1 によくある名前のポートだけです。下の一覧にお使いの FM-1 があれば、「試す」を押してください。",
@@ -630,13 +630,13 @@ const TEXT = {
     newtab: " (opens in a new tab)", progress: "Progress", pct: ", {n} percent",
     warn: "Do not unplug the USB cable while writing.",
     install: "Install", other: "日本語",
-    manual: "Back to PROBE",
+    manual: "Back to COSMOS",
     direct: "Connect the USB cable directly to the computer. No probe or Transporter is needed.",
     brick: "If the FM-1 no longer starts, a Mac can put the stock firmware back:",
     bricklink: "recovering an FM-1 that won't start",
     back: "To go back to the official firmware, use \"Back to the stock firmware\" below, or M-VAVE's own updater, M-UPGRADE (Downloads → PC Software → M-UPGRADE).",
     stockh: "Back to the stock firmware",
-    stockwhy: "This writes M-VAVE's own FM-1 firmware back, from PROBE (or its safe mode, or another firmware with the same update entry) over the same USB cable. What PROBE saved may be lost.",
+    stockwhy: "This writes M-VAVE's own FM-1 firmware back, from COSMOS (or its safe mode, or another firmware with the same update entry) over the same USB cable. What COSMOS saved may be lost.",
     stock1: "Download M-VAVE's FM-1 firmware:",
     stock2: "Choose the file you downloaded:",
     stock3: "Connect the FM-1 by USB and press the button below.",
@@ -661,19 +661,19 @@ const TEXT = {
     reporth: "Report a problem",
     reportwhy: "If the FM-1 crashed, don't switch it off: connect it by USB and press the button below. The crash record survives a restart, but not switching off. Copy what appears and send it, with what you were doing at the time.",
     reportread: "Read the crash report", reportcopy: "Copy", reportlabel: "Crash report",
-    reportwait: "Reading…", reportnone: "No answer. Check that the FM-1 is running PROBE.",
+    reportwait: "Reading…", reportnone: "No answer. Check that the FM-1 is running COSMOS.",
     reportok: "Read. Copy it and send it.", reportcopied: "Copied.",
     mboot: "Also install m-bootloader: hold PLAY while switching on for a recovery menu, or REC for update mode, even when a firmware won't start.",
     mbootwhy: "An open bootloader by Julius Vitkauskas (MIT). It replaces M-VAVE's bootloader and stays through firmware updates; \"Back to the stock firmware\" puts M-VAVE's back. Its menu's WIPE USER DATA erases everything firmwares have saved.",
     confirmh: "Before you install",
     confirm1: "While it is written, the FM-1's screen shows UPDATING and a bar, or stays dark. Don't unplug the USB cable or switch the FM-1 off until this page says Done. It can take several minutes.",
     confirmboot: "m-bootloader is written after the firmware: the FM-1 restarts once more for it.",
-    bakh: "Back up first.", confirmbak: "Installing can lose what PROBE has saved.",
+    bakh: "Back up first.", confirmbak: "Installing can lose what COSMOS has saved.",
     bakok: "I've backed up, or have nothing to keep.",
-    backuplink: "Back up PROBE", confirmgo: "Install", confirmcancel: "Cancel",
+    backuplink: "Back up COSMOS", confirmgo: "Install", confirmcancel: "Cancel",
     bootstart: "Installing m-bootloader", bootwrite: "Installing m-bootloader: the FM-1 restarts by itself",
     bootdone: "Done, with m-bootloader",
-    bootrefused: "PROBE is installed, but m-bootloader could not be: nothing else was changed.",
+    bootrefused: "COSMOS is installed, but m-bootloader could not be: nothing else was changed.",
     stockdamaged: "That file is damaged. Download it again.",
     pickh: "Is the FM-1 under another name?",
     pickwhy: "A computer can show an FM-1's port under another device's name (a Mac remembers names by USB socket). This page asks only the ports with an FM-1's usual names by itself. If your FM-1 is in this list, press Try on it.",
@@ -722,7 +722,7 @@ const log = (t) => {
   if (atEnd) el.scrollTop = el.scrollHeight;
 };
 let image = null, boot = null;
-const meta = {"version": "0.2", "product": "FM-1_71000200", "pkg": "../firmware/probe-0.2.fwsc", "backup": false, "boot": {"pkg": "../firmware/m-bootloader-1.2.fwsc", "version": "1.2", "sha256": "0e89141f52d1f2d62198d4f69147a2c15c8360806e64d48002990a6fdab6d6dd"}};
+const meta = {"version": "0.1", "product": "FM-1_72000100", "pkg": "../firmware/cosmos-0.1.fwsc", "backup": false, "boot": {"pkg": "../firmware/m-bootloader-1.2.fwsc", "version": "1.2", "sha256": "0e89141f52d1f2d62198d4f69147a2c15c8360806e64d48002990a6fdab6d6dd"}};
 /* the firmware's own steps around an install (its site's install_app script, or none): before(midi, ui) runs before
    anything is written, may ask (ui.ask) and returns its state, or false to stop there; after(midi, ui, state) once
    the new firmware has started (it waits for it itself). A failure in after is said, the install stays done */
@@ -764,7 +764,7 @@ window.addEventListener("beforeunload", (e) => { if (writing) { e.preventDefault
     if (productOf(pkg) !== meta.product) { sayK("badpkg"); return; }
     image = logicalImage(pkg);
     try { checkUfw(image); } catch (_) { image = null; sayK("badpkg"); return; }
-    say(`PROBE ${meta.version}`);
+    say(`COSMOS ${meta.version}`);
     $("go").disabled = false;
   } catch (e) { sayK("loadfail", e.message); }
   /* m-bootloader: offered only when its package is here and is the one the site was made with */
