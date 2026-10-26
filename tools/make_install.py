@@ -4,7 +4,8 @@
 base/tools/make_site.py's site (front page, manual, emulator: they need Emscripten):
 
   index.html                  a link to install/
-  install/index.html          the web installer (Chrome or Edge, Web MIDI)
+  install/index.html          the web installer (Chrome or Edge, Web MIDI): APP_DIR/web/installer.html around
+                              fm1-base's installer script when the app has one, else fm1-base's page
   firmware/NAME-VERSION.fwsc  the package it writes; also the download
   firmware/m-bootloader-X.Y.fwsc  m-bootloader (MIT), which the installer offers after the firmware
   words/                      the screen reader's words files (APP_DIR/web/words)
@@ -46,6 +47,10 @@ def main(app, pkg, version, out):
     shutil.copy(boot, out / "firmware" / boot_name)
     shutil.copy(BASE / "web" / "m-bootloader" / "LICENSE", out / "firmware" / "m-bootloader-LICENSE.txt")
     html = (BASE / "web" / "installer.html").read_text(encoding="utf-8")
+    own = app / "web" / "installer.html"
+    if own.is_file():                        # the app's own page around fm1-base's installer script
+        script = html[html.index('<script type="module">'):html.index("</script>", html.index('<script type="module">')) + 9]
+        html = own.read_text(encoding="utf-8").replace("<!--INSTALLER-SCRIPT-->", script)
     lib = strip_module((BASE / "web" / "fm1pkg.js").read_text(encoding="utf-8")) + "\n" + \
         strip_module((BASE / "web" / "fm1ota.js").read_text(encoding="utf-8"))
     meta = json.dumps({"version": version, "product": product, "pkg": "../firmware/" + name,
@@ -54,7 +59,7 @@ def main(app, pkg, version, out):
                                 "sha256": hashlib.sha256(boot.read_bytes()).hexdigest()}})
     repo = conf.get("repo", "")
     credits = conf.get("credits", "")
-    for key, val in (("NAME", conf["name"]), ("REPO", repo), ("REPO_SHORT", re.sub(r"^https?://", "", repo)),
+    for key, val in (("NAME", conf["name"]), ("VERSION", version), ("REPO", repo), ("REPO_SHORT", re.sub(r"^https?://", "", repo)),
                      ("LICENSE", conf.get("licence", "GPL-3.0-or-later")),
                      ("CREDITS", " " + credits if credits else "")):
         html = html.replace("{{" + key + "}}", val)
