@@ -100,7 +100,7 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
       <p class="lead">A drone synthesizer played by the sky. The sun, the clouds, the air pressure, the geomagnetic activity and the moon shape two endless drones, and the screen is the real sky above you.</p>
       <div class="cta">
         <a class="btn primary" href="try/">Hear it in your browser</a>
-        <a class="btn ghost" href="install/">Install the test firmware</a>
+        <a class="btn ghost" href="install/">Install on your FM-1</a>
       </div>
       <p class="meta">Free · GPL-3.0 · by Gadlele</p>
     </div>
@@ -115,15 +115,17 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
       <h2>Where it stands</h2>
       <p class="date">2026-10-26</p>
       <ul>
-        <li><b>COSMOS PROBE 0.2</b>, a test firmware: it joins your WiFi, fetches the cloud cover and the pressure (Open-Meteo) and the Kp index (NOAA) over HTTPS, and shows how much memory WiFi leaves for COSMOS's delay and reverb. It makes no sound. First run on an FM-1: connected at −85 dBm, both sources in 386 ms, and room for a 1-second stereo delay beside the reverb. 0.2 keeps the password's big character in lower case when it is.</li>
+        <li><b>COSMOS 0.1, the first stage</b>: the engine on the FM-1's chip, with the sky in your hands. Two drones, a sub, noise, ring and cross-modulation, the filter, a 0.48-second stereo delay and a reverb, shaped by the five sources on the knobs. No WiFi and no stars yet. <a href="install/">Install it</a>.</li>
+        <li><b>COSMOS PROBE 0.2</b>, a test firmware (<a href="probe/install/">install it</a>): it joins your WiFi, fetches the cloud cover and the pressure (Open-Meteo) and the Kp index (NOAA) over HTTPS, and shows how much memory WiFi leaves for COSMOS's delay and reverb. It makes no sound. First run on an FM-1: connected at −85 dBm, both sources in 386 ms, and room for a 1-second stereo delay beside the reverb. 0.2 keeps the password's big character in lower case when it is.</li>
         <li><b>The sound, in your browser</b>: COSMOS's engine sketched in Web Audio, with the five sources on sliders, random weather, the real sky over Rome and the planets' voices. <a href="try/">Try it</a>.</li>
-        <li><b>Next</b>: the firmware itself, the engine on the FM-1's chip, the sky drawn from a catalog of 500 stars.</li>
+        <li><b>Next</b>: the sky computed on the FM-1 (sun, moon, stars, planets) and drawn behind the readings; then the weather and the Kp every half hour, and the random weather offline.</li>
       </ul>
     </div>
     <aside class="versions">
       <h3>Versions</h3>
       <ul>
-        <li><a href="firmware/probe-0.2.fwsc"><b>PROBE 0.2</b></a><span>2026-10-26</span> <em>test</em></li>
+        <li><a href="firmware/cosmos-0.1.fwsc"><b>COSMOS 0.1</b></a><span>2026-10-26</span> <em>stage 1</em></li>
+        <li><a href="probe/firmware/probe-0.2.fwsc"><b>PROBE 0.2</b></a><span>2026-10-26</span></li>
         <li><b>PROBE 0.1</b><span>2026-10-26</span></li>
       </ul>
       <p>The plan and the code: <a href="https://github.com/Gadlele/COSMOS/blob/main/docs/DESIGN.md">DESIGN</a> · <a href="https://github.com/Gadlele/COSMOS/blob/main/docs/MEMORY.md">MEMORY</a> · <a href="https://github.com/Gadlele/COSMOS">Source</a></p>
@@ -155,6 +157,7 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
       <figure><img src="img/full-moon.png" alt="The screen with the readings, under a full moon" loading="lazy"><figcaption><b>Full moon</b> over Rome, 26 October, 22:00: its glow hides the faint stars.</figcaption></figure>
       <figure><img src="img/new-moon.png" alt="The screen with the readings, under a new moon" loading="lazy"><figcaption><b>New moon</b>, 9 November, 21:00: more stars come out.</figcaption></figure>
       <figure><img src="img/sky-only.png" alt="The screen with the sky alone" loading="lazy"><figcaption><b>The sky alone</b>, once the readings have faded.</figcaption></figure>
+      <figure><img src="img/cosmos-stage1.png" alt="COSMOS 0.1's screen: the sources and what they do to the sound" loading="lazy"><figcaption><b>COSMOS 0.1</b>: a geomagnetic storm on the knobs.</figcaption></figure>
       <figure><img src="img/probe-main.png" alt="COSMOS PROBE's main screen" loading="lazy"><figcaption><b>PROBE</b>: the network, the data and the memory left.</figcaption></figure>
       <figure><img src="img/probe-networks.png" alt="COSMOS PROBE's list of networks" loading="lazy"><figcaption><b>PROBE</b>: the networks around.</figcaption></figure>
       <figure><img src="img/probe-password.png" alt="COSMOS PROBE's password screen" loading="lazy"><figcaption><b>PROBE</b>: a password typed on the panel.</figcaption></figure>
@@ -164,13 +167,13 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
 
 <section>
   <div class="wrap">
-    <h2>Trying the test firmware</h2>
-    <p class="sub">On a computer with Chrome or Edge and the FM-1 on USB. Installing firmware is at your own risk; the installer puts M-VAVE's own firmware back too.</p>
+    <h2>Playing the first stage</h2>
+    <p class="sub">On a computer with Chrome or Edge and the FM-1 on USB. Installing firmware is at your own risk; the installer puts M-VAVE's own firmware back too. Decline m-bootloader when it is offered: COSMOS does not need it.</p>
     <ol class="steps">
-      <li><span><b>Install</b> from the <a href="install/">installer</a>. The FM-1 restarts as COSMOS PROBE.</span></li>
-      <li><span><span class="keys">SEL</span> lists the networks around. Turn <span class="keys">SELECT</span> to yours and press <span class="keys">SAVE</span>.</span></li>
-      <li><span><b>The password</b>: <span class="keys">SELECT</span> turns through the characters, <span class="keys">ALGO</span> jumps between abc, ABC, 123 and symbols, <span class="keys">PLAY</span> adds one, <span class="keys">HOME</span> deletes, <span class="keys">SAVE</span> joins.</span></li>
-      <li><span><b>The data</b> come in a few seconds after it joins: clouds, pressure, Kp, the time, and the memory. <span class="keys">PLAY</span> fetches again; it also does every 15 minutes.</span></li>
+      <li><span><b>Install</b> from the <a href="install/">installer</a>. The FM-1 restarts as COSMOS, and the drones start.</span></li>
+      <li><span><b>The sky on the knobs</b>: <span class="keys">K1</span> the sun's height, <span class="keys">K2</span> the clouds, <span class="keys">K3</span> the pressure, <span class="keys">K4</span> the Kp index, <span class="keys">ALGO</span> the moon around its cycle, <span class="keys">PRESET</span> the pressure falling, steady or rising.</span></li>
+      <li><span><b>The note</b>: any key moves the drones to its note; <span class="keys">OCT−</span> <span class="keys">OCT+</span> their octave. <span class="keys">PLAY</span> fades them out and in, <span class="keys">MASTER</span> is the volume.</span></li>
+      <li><span><b>The bottom line</b> shows what the chip spends: the audio's share of its time and the memory left.</span></li>
       <li><span><b>Back to stock</b>: "Back to the stock firmware" on the installer page.</span></li>
     </ol>
   </div>

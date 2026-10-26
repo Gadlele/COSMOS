@@ -1,0 +1,15 @@
+# COSMOS's build settings (base/tools/build.py; ./build.sh cosmos)
+name = "COSMOS"
+id_prefix = "FM-1_72"          # package identity: dev FM-1_7200, releases FM-1_72XXYYZZ
+usb_manufacturer = "COSMOS"
+usb_product = "COSMOS FM-1"
+wifi = true                    # its heap holds the delay and the reverb; the radio stays off until stage 3
+usb_audio_in = false           # the RAM goes to WiFi
+usb_audio_out = false
+words = "words.tsv"
+font_full = ["M"]
+o2 = ["dsp/engine.c"]          # the engine at -O2
+gen = ["tools/gen_waves.py --out {gen}"]   # the moon's wavetables
+# the install site (tools/make_install.py)
+repo = "https://github.com/Gadlele/COSMOS"
+licence = "GPL-3.0-or-later"

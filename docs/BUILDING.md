@@ -25,7 +25,8 @@ cd ~/fw-AC79_AIoT_SDK && git sparse-checkout set --no-cone include_lib apps/comm
 ## Build
 
 ```
-./build.sh probe                     # probe/build/probe.fwsc, a development build
+./build.sh cosmos                    # cosmos/build/cosmos.fwsc, a development build
+./build.sh probe                     # probe/build/probe.fwsc, the test firmware
 ./build.sh probe --release 0.2       # probe/build/probe-0.2.fwsc, identity FM-1_71000200
 ./build.sh probe --host              # the host simulator: probe/build/host/probe_host SCRIPT OUTDIR
 ```
@@ -38,9 +39,15 @@ From the command line:
 python3 base/tools/fm1_install.py probe/build/probe.fwsc
 ```
 
-Or from the browser: `tools/make_pages.py probe probe/build/probe-0.1.fwsc 0.1 OUT` puts the site together (the
-project page from `web/site`, the installer, the sound in the browser at `try/`), and the `gh-pages` branch serves it
-at <https://gadlele.github.io/COSMOS/>.
+Or from the browser: the site puts the firmware's installer at `install/` and the probe's at `probe/install/`:
+
+```
+./build.sh cosmos --release 0.1 && ./build.sh probe --release 0.2
+tools/make_pages.py cosmos cosmos/build/cosmos-0.1.fwsc 0.1 OUT
+tools/make_install.py probe probe/build/probe-0.2.fwsc 0.2 OUT/probe && cp OUT/probe/words/*.json OUT/words/
+```
+
+The `gh-pages` branch serves it at <https://gadlele.github.io/COSMOS/>.
 
 Installing firmware is at your own risk. Hold OCT− and OCT+ for 5 seconds for the update mode; the installer page
 also puts M-VAVE's own firmware back.
