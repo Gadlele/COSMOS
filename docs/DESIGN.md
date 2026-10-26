@@ -126,7 +126,7 @@ With WiFi off (REC on the WiFi page), or no network in range:
 
 | Button | |
 | --- | --- |
-| **HOME** | back to nature: the sun and the moon as they are, the weather as it comes (over WiFi; offline, or with no news for three hours, drifting by itself). The readings' last line says how old it is |
+| **HOME** | back to nature, at once: the sun and the moon as they are, the weather as it is now (nature's weather goes on while EDIT has the knobs) (over WiFi; offline, or with no news for three hours, drifting by itself). The readings' last line says how old it is |
 | **ENV** | the WiFi page (above), and back; lit bright while the weather is the network's |
 | **EDIT** | everything by hand, the readings held on the screen: K1 the sun's height, K2 the clouds, K3 the pressure, K4 Kp, ALGO the moon's cycle, PRESET the pressure's trend |
 | **SEL** | the next planet up (in EDIT any of the seven classical ones), or none |

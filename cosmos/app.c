@@ -66,6 +66,12 @@ static struct {                          /* kept in the store (OBJ_SETTINGS) */
 
 static sky_t sky = {.sun = 20.0f, .clouds = 30.0f, .press = 1015.0f, .trend = 0, .kp = 1.67f, .moon = 0.4f,
                     .hz = {110.0f, 164.81f}, .linked = 1, .planet = PL_NONE, .on = 1};
+/* nature's weather, apart from the sky's: it goes on while EDIT has the knobs, and HOME gives it back at once */
+static struct {
+    float clouds, press, kp;
+    int32_t trend;
+} nat = {30.0f, 1015.0f, 1.67f, 0};
+
 static sky_now_t now_sky;                /* the last astro_now */
 static uint8_t star_x[NSTARS], star_y[NSTARS];   /* the stars on the screen (y 255: not up, or off the square) */
 static int16_t pl_x[PL_N], pl_y[PL_N];   /* each planet on the square, by PL_* (x -1: below the horizon or off it) */
@@ -229,15 +235,16 @@ static void harmony(void)
     {   /* the instrument: fixed, or the pressure's (1.5 hPa either way before it changes) */
         static const float EDGE[3] = {1004.0f, 1012.0f, 1020.0f};   /* below: CHOIR, WARM PAD, STRINGS; above, ORGAN */
         static const int8_t BAND[4] = {2, 3, 1, 0};
-        int32_t lo = 0, hi = 0;
+        int32_t lo = 0, hi = 0, mid = 0;
         for (i = 0; i < 3; i++) {
             lo += sky.press - 1.5f >= EDGE[i];
             hi += sky.press + 1.5f >= EDGE[i];
+            mid += sky.press >= EDGE[i];
         }
         if (set.inst >= 2 && set.inst <= 5)
             sky.engine = set.inst - 2;
-        else if (lo == hi)
-            sky.engine = BAND[lo];
+        else if (sky.engine != BAND[lo] && sky.engine != BAND[hi])   /* near an edge, the one playing stays */
+            sky.engine = BAND[mid];
     }
     sky.root_hz = root;
     for (i = 0; i < 7; i++)
@@ -287,10 +294,10 @@ void app_init(void)
         || set.octave > 4 || set.pc[0] > 11 || set.pc[1] > 11 || set.tuning > 2)
         defaults();
     clock_set(set.unix_saved);           /* the clock goes on from where it was saved */
-    sky.clouds = set.clouds;
-    sky.press = set.press;
-    sky.kp = set.kp;
-    sky.trend = set.trend;
+    sky.clouds = nat.clouds = set.clouds;   /* nature starts from where it was (the network brings it up to date) */
+    sky.press = nat.press = set.press;
+    sky.kp = nat.kp = set.kp;
+    sky.trend = nat.trend = set.trend;
     sky.sun = set.sun;
     sky.moon = set.moon;
     eng_ok = eng_init() == 0;            /* the delay and the reverb, before WiFi takes the heap */
@@ -405,18 +412,27 @@ static void weather_tick(float hours)
 {
     static float press_then = 1015.0f, since = 0.0f;
     float sq = fm_sqrtf(hours);
-    sky.press = fm_clampf(sky.press - (sky.press - 1013.0f) / 60.0f * hours + 2.2f * sq * gauss(), 965.0f, 1045.0f);
-    sky.clouds = fm_clampf(sky.clouds - (sky.clouds - 45.0f) / 8.0f * hours + 16.0f * sq * gauss(), 0.0f, 100.0f);
-    sky.kp = fm_clampf(sky.kp - (sky.kp - 1.7f) / 7.0f * hours + 0.5f * sq * gauss(), 0.0f, 9.0f);
+    nat.press = fm_clampf(nat.press - (nat.press - 1013.0f) / 60.0f * hours + 2.2f * sq * gauss(), 965.0f, 1045.0f);
+    nat.clouds = fm_clampf(nat.clouds - (nat.clouds - 45.0f) / 8.0f * hours + 16.0f * sq * gauss(), 0.0f, 100.0f);
+    nat.kp = fm_clampf(nat.kp - (nat.kp - 1.7f) / 7.0f * hours + 0.5f * sq * gauss(), 0.0f, 9.0f);
     if ((float)(rnd() & 0xFFFFFFu) / 16777216.0f < hours / 250.0f)   /* a storm, now and then */
-        sky.kp = 5.0f + (float)(rnd() & 0xFFFFu) / 65536.0f * 3.5f;
+        nat.kp = 5.0f + (float)(rnd() & 0xFFFFu) / 65536.0f * 3.5f;
     since += hours;
     if (since >= 3.0f) {                 /* the trend: the last three hours */
-        float dp = sky.press - press_then;
-        sky.trend = dp < -1.0f ? -1 : dp > 1.0f ? 1 : 0;
-        press_then = sky.press;
+        float dp = nat.press - press_then;
+        nat.trend = dp < -1.0f ? -1 : dp > 1.0f ? 1 : 0;
+        press_then = nat.press;
         since = 0.0f;
     }
+}
+
+/* HOME: the sky's weather is nature's */
+static void nature_to_sky(void)
+{
+    sky.clouds = nat.clouds;
+    sky.press = nat.press;
+    sky.kp = nat.kp;
+    sky.trend = nat.trend;
 }
 
 /* ------------------------------------------------------------------ the network --- */
@@ -1273,6 +1289,7 @@ static void input(void)
     if (down >> B_HOME & 1u) {           /* back to nature, the readings */
         to_screen(0);
         set.manual = 0;
+        nature_to_sky();                 /* the weather as it is, at once (the sun and the moon follow: last_sky) */
         ui.view_sky = 0;
         ui.dirty = 1;
         ui.last_sky = 0;
@@ -1385,17 +1402,17 @@ void app_frame(void)
     net_tick(now);
     if (now - ui.last_weather >= 1000u) {   /* nature's weather: the network's, else random at its real pace */
         float hours = (float)(now - ui.last_weather) / 3600000.0f;
-        if (!set.manual) {
-            if (ui.net_at && now - ui.net_at < WX_FRESH_MS) {   /* glide to what came, over a few minutes */
-                float k = 1.0f - fm_expf(-hours * 60.0f / 4.0f);
-                sky.clouds += (ui.wx_cloud - sky.clouds) * k;
-                sky.press += (ui.wx_press - sky.press) * k;
-                sky.kp += (ui.wx_kp - sky.kp) * k;
-                sky.trend = ui.wx_trend;
-            } else {
-                weather_tick(hours);
-            }
+        if (ui.net_at && now - ui.net_at < WX_FRESH_MS) {   /* glide to what came, over a few minutes */
+            float k = 1.0f - fm_expf(-hours * 60.0f / 4.0f);
+            nat.clouds += (ui.wx_cloud - nat.clouds) * k;
+            nat.press += (ui.wx_press - nat.press) * k;
+            nat.kp += (ui.wx_kp - nat.kp) * k;
+            nat.trend = ui.wx_trend;
+        } else {
+            weather_tick(hours);
         }
+        if (!set.manual)
+            nature_to_sky();
         ui.last_weather = now;
     }
     harmony();                           /* the chords move on their own: every frame */
