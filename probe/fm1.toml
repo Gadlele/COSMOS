@@ -8,6 +8,7 @@ wifi = true
 usb_audio_in = false           # the RAM goes to WiFi
 usb_audio_out = false
 words = "words.tsv"
+font_full = ["M"]              # FONT_M with lower case: the password's big character shows as typed
 vendored = ["third_party/"]    # BearSSL: the register check skips it (x86 / POWER8 code off)
 # the network code and BearSSL for https, built as the SDK builds code that talks lwIP
 net = ["net.c", "third_party/bearssl/src/**/*.c"]
