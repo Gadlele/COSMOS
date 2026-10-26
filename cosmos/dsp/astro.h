@@ -14,6 +14,7 @@ typedef struct {
 
 typedef struct {
     float sun_alt;                       /* the sun's height, degrees */
+    altaz_t sun_pos;
     float moon;                          /* the moon's cycle: 0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter */
     float moon_lit;                      /* its lit fraction, 0..1 */
     altaz_t moon_pos;
@@ -33,6 +34,3 @@ int astro_project(altaz_t p, int32_t *x, int32_t *y);
 int32_t days_from_civil(int32_t y, int32_t m, int32_t d);
 void civil_from_days(int32_t z, int32_t *y, int32_t *m, int32_t *d);
 int32_t weekday(int32_t days);
-/* the offset from UTC at Unix time u, seconds: a standard offset (quarter hours) and a summer-time rule */
-enum { DST_NONE, DST_EU, DST_US, DST_AU, DST_NZ };
-int32_t utc_offset(uint32_t u, int32_t utc4, int32_t rule);

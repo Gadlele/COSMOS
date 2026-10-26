@@ -137,7 +137,8 @@ void astro_now(int32_t t, float lat_deg, float lon_deg, sky_now_t *s)
     L = wrap360(q + 1.915f * fm_sinf(g) + 0.020f * fm_sinf(2.0f * g));
     slon = L * RAD;
     ecl2eq(slon, 0.0f, &sra, &sdec);
-    s->sun_alt = astro_altaz(sra, sdec, s->lst, lat).alt / RAD;
+    s->sun_pos = astro_altaz(sra, sdec, s->lst, lat);
+    s->sun_alt = s->sun_pos.alt / RAD;
     /* the moon */
     Lm = wrap360(218.316f + 13.176396f * d);
     Mm = wrap360(134.963f + 13.064993f * d) * RAD;
@@ -199,45 +200,3 @@ void civil_from_days(int32_t z, int32_t *y, int32_t *m, int32_t *d)
     *y = yoe + era * 400 + (*m <= 2);
 }
 int32_t weekday(int32_t days) { return days >= -4 ? (days + 4) % 7 : (days + 5) % 7 + 6; }
-
-/* the day of the n-th (1..) Sunday of a month, or of the last (n = 0) */
-static int32_t sunday(int32_t y, int32_t m, int32_t n)
-{
-    int32_t first = days_from_civil(y, m, 1), w = weekday(first), d;
-    if (n > 0)
-        return first + (7 - w) % 7 + 7 * (n - 1);
-    d = days_from_civil(m == 12 ? y + 1 : y, m == 12 ? 1 : m + 1, 1) - 1;
-    return d - weekday(d);
-}
-
-int32_t utc_offset(uint32_t u, int32_t utc4, int32_t rule)
-{
-    int32_t std = utc4 * 900, y, mo, dd, on = 0;
-    uint32_t a, b, ls = u + (uint32_t)std;                 /* local standard time */
-    civil_from_days((int32_t)(ls / 86400u), &y, &mo, &dd);
-    switch (rule) {
-    case DST_EU:                                           /* 01:00 UTC, last Sundays of March and October */
-        a = (uint32_t)sunday(y, 3, 0) * 86400u + 3600u;
-        b = (uint32_t)sunday(y, 10, 0) * 86400u + 3600u;
-        on = u >= a && u < b;
-        break;
-    case DST_US:                                           /* 02:00 local, 2nd Sunday of March to 1st of November */
-        a = (uint32_t)sunday(y, 3, 2) * 86400u + 7200u;
-        b = (uint32_t)sunday(y, 11, 1) * 86400u + 3600u;   /* 02:00 summer time is 01:00 standard */
-        on = ls >= a && ls < b;
-        break;
-    case DST_AU:                                           /* 02:00 standard, 1st Sunday of October to 1st of April */
-        a = (uint32_t)sunday(y, 4, 1) * 86400u + 7200u;
-        b = (uint32_t)sunday(y, 10, 1) * 86400u + 7200u;
-        on = ls < a || ls >= b;
-        break;
-    case DST_NZ:                                           /* last Sunday of September to 1st Sunday of April */
-        a = (uint32_t)sunday(y, 4, 1) * 86400u + 7200u;
-        b = (uint32_t)sunday(y, 9, 0) * 86400u + 7200u;
-        on = ls < a || ls >= b;
-        break;
-    default:
-        break;
-    }
-    return std + (on ? 3600 : 0);
-}

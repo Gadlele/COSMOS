@@ -27,28 +27,37 @@ Hadamard matrix, longer under clouds. The delay and the reverb take 103 KB of th
 
 No presets, no scenes: the sound moves continuously, never jumps.
 
-## Planets: engines and voices
+## Planets: notes, chords, engines and voices
 
-A planet on the screen can be chosen (SELECT). It changes the drones' engine and adds a rhythmic voice whose pulse
-comes from its orbit (2.2 s times the square root of the orbit in years). Only a planet drawn on the screen can be chosen;
-when it sets or the sky hides it, its engine and its voice go.
+The seven classical planets, the Sun and the Moon among them, can be chosen (SELECT) while they are drawn on the
+screen; when one sets or the sky hides it, it goes. A planet brings four things:
 
-| Planet | Engine | Voice | Pulse |
-| --- | --- | --- | --- |
-| none | COSMOS's own | | |
-| Mercury | thin and bright: little sub, the filters open | GLINT: quick high sparks up the chord | 1.1 s |
-| Venus | sweet, glass: the oscillators near sines, the partner two octaves up and soft, no drive | BELLS: FM bells walking the pentatonic as a pentagram (minor under tension) | 1.7 s |
-| Mars | raw: driven hard, more noise | PULSE: a low double beat, a heartbeat | 3.0 s |
-| Jupiter | deep and warm: a heavy sub, the filters low | SWELL: a sub below the sub, breathing | 7.6 s |
-| Saturn | metallic: the partner at an inharmonic 2.76, more resonance | RINGS: an inharmonic chime with a long tail | 11.9 s |
+- **Its note**: its period raised by octaves into hearing (Hans Cousto's cosmic octave): the Earth's year for the Sun,
+  the synodic month for the Moon, each planet's orbit. TUNING COSMIC plays the exact frequency, EQUAL the nearest
+  tempered note.
+- **Four chords** on that note, one every 10 s, in the mode the sun's height gives: Phrygian below -18 degrees,
+  Aeolian to -6, Dorian to the horizon, Mixolydian to 12, Ionian to 30, Lydian above. Drone 1 plays the chord's root,
+  its partner the fifth; drone 2 the third, its partner coloured by the pressure (the octave when high and steady, the
+  seventh as it falls, a suspended fourth and the ninth deep down).
+- **Its engine** for the drones, gliding in over two seconds.
+- **Its rhythmic voice**, pulsing with its period (2.2 s times the square root of the period in years), in the scale.
 
-The engines glide into each other over about two seconds.
+| Planet | Note (cosmic) | Chords (degrees) | Engine | Voice | Pulse |
+| --- | --- | --- | --- | --- | --- |
+| Sun | 126.22 Hz (B) | I V VI IV | radiant, open | FLARE: a soft bright chord flaring high | 2.2 s |
+| Moon | 210.42 Hz (G#) | I VI III IV | silver, singing | RIPPLE: tiny glassy drops wandering the scale | 0.6 s |
+| Mercury | 141.27 Hz (C#) | I II IV V | thin and bright | GLINT: quick high sparks up the chord | 1.1 s |
+| Venus | 221.23 Hz (A) | I IV VI V | sweet, glass | BELLS: FM bells walking the scale as a star | 1.7 s |
+| Mars | 144.72 Hz (D) | I VII VI V | raw, driven | PULSE: a low double beat, a heartbeat | 3.0 s |
+| Jupiter | 183.58 Hz (F#) | I IV II V | deep and warm | SWELL: a sub below the sub, breathing | 7.6 s |
+| Saturn | 147.85 Hz (D) | I III VII VI | metallic, ringed | RINGS: an inharmonic chime with a long tail | 11.9 s |
 
 ## Notes
 
-The keyboard is split: the left half (F3..F#4) sets drone 1's note, the right half (G4..G5) drone 2's; OCT− and OCT+
-move both. Each drone's partner sits an interval above it: the pressure's (below), or an octave when the player
-leaves the pressure out of the harmony (SEL).
+With no planet, the keyboard is split: the left half (F3..F#4) sets drone 1's note, the right half (G4..G5) drone
+2's, freely; each partner sits at the pressure's interval (or an octave when SEL leaves the pressure out). With a
+planet, the keys play its scale only: a key moves its drone to the nearest note of the scale while it is held and for
+10 s after it is let go, then the chords go on. OCT- and OCT+ move everything an octave.
 
 ## Sources and what they do
 
@@ -86,9 +95,10 @@ For players who do not want to connect it:
 
 ## Controls
 
-- **Keys:** the left half drone 1's note, the right half drone 2's
-- **SELECT:** a planet on the screen (its engine and its voice)
-- **HOME:** the settings: city, date, time (local, with summer time), weather (MANUAL or RANDOM)
+- **Keys:** with no planet, the left half drone 1's note and the right half drone 2's; with one, its scale
+- **SELECT:** a planet on the screen (its note, its chords, its engine, its voice)
+- **HOME:** the settings: latitude, longitude, UTC offset, summer time, date, time (local), weather (MANUAL or
+  RANDOM), tuning (COSMIC or EQUAL)
 - **SEL:** the pressure in the harmony, or not
 - **SKY knob:** how much the sky drives the sound, 0 (manual) to 100 (all sky)
 - **Volume**

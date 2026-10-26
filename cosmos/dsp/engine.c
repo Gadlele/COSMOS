@@ -41,16 +41,19 @@ typedef struct {
 static const engine_t ENGINES[PL_N] = {
     /*            sine  pr_mul pr_fixed partner sub  drive cutoff q    noise verb */
     [PL_NONE] = {0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f},
+    [PL_SUN] = {0.1f, 1.0f, 0.0f, 1.0f, 0.6f, 1.0f, 1.5f, 0.8f, 0.5f, 0.10f},       /* radiant, open */
+    [PL_MOON] = {0.6f, 1.0f, 0.0f, 0.7f, 0.7f, 0.6f, 0.9f, 1.4f, 0.4f, 0.20f},      /* silver, singing */
     [PL_MERCURY] = {0.3f, 2.0f, 0.0f, 0.8f, 0.2f, 0.7f, 1.7f, 0.8f, 0.5f, 0.05f},   /* thin and bright */
     [PL_VENUS] = {0.85f, 2.0f, 0.0f, 0.55f, 0.8f, 0.55f, 1.3f, 0.5f, 0.3f, 0.15f},  /* sweet, glass */
     [PL_MARS] = {0.0f, 1.0f, 0.0f, 1.2f, 1.0f, 2.6f, 1.15f, 1.3f, 2.0f, -0.05f},    /* raw, driven */
     [PL_JUPITER] = {0.4f, 1.0f, 0.0f, 0.7f, 1.9f, 0.9f, 0.6f, 0.6f, 0.6f, 0.05f},   /* deep and warm */
     [PL_SATURN] = {0.2f, 1.0f, 2.76f, 0.9f, 0.8f, 0.8f, 1.1f, 1.6f, 0.6f, 0.1f},    /* metallic, ringed */
 };
-static const char *const PL_NAME[PL_N] = {"", "MERCURY", "VENUS", "MARS", "JUPITER", "SATURN"};
-static const char *const PL_VOICE[PL_N] = {"", "GLINT", "BELLS", "PULSE", "SWELL", "RINGS"};
-/* each voice's pulse: 2.2 s times the square root of its orbit in years (Mercury 1.1 s .. Saturn 11.9 s) */
-static const float PL_PERIOD[PL_N] = {0.0f, 1.08f, 1.73f, 3.02f, 7.58f, 11.94f};
+static const char *const PL_NAME[PL_N] = {"", "SUN", "MOON", "MERCURY", "VENUS", "MARS", "JUPITER", "SATURN"};
+static const char *const PL_VOICE[PL_N] = {"", "FLARE", "RIPPLE", "GLINT", "BELLS", "PULSE", "SWELL", "RINGS"};
+/* each voice's pulse: 2.2 s times the square root of its period in years: the Earth's year for the Sun, the
+ * synodic month for the Moon, each planet's orbit (Moon 0.6 s, Mercury 1.1 .. Saturn 11.9) */
+static const float PL_PERIOD[PL_N] = {0.0f, 2.2f, 0.63f, 1.08f, 1.73f, 3.02f, 7.58f, 11.94f};
 
 const char *planet_name(int32_t p) { return p > 0 && p < PL_N ? PL_NAME[p] : ""; }
 const char *planet_voice(int32_t p) { return p > 0 && p < PL_N ? PL_VOICE[p] : ""; }
@@ -68,16 +71,20 @@ const char *moon_name(float moon)
     return N[(int32_t)(x * 4.0f + 0.5f) & 3];
 }
 
+float tension(const sky_t *s) { return (1013.0f - s->press) / 22.0f - 0.6f * (float)s->trend; }
+
 void sky_map(const sky_t *s, sky_map_t *m)
 {
-    float t = (1013.0f - s->press) / 22.0f - 0.6f * (float)s->trend;   /* tension: -1.4 high and rising .. 2.6 */
+    float t = tension(s);
     float c = fm_clampf(s->clouds / 100.0f, 0.0f, 1.0f), x = s->moon - fm_floorf(s->moon);
     int32_t k = s->linked ? (int32_t)(fm_clampf((t + 1.4f) / 4.0f, 0.0f, 1.0f) * (float)(NINT - 1) + 0.5f) : 0;
     float h = s->sun;
-    m->hz[0] = 440.0f * fm_exp2f((float)(s->note[0] - 69) / 12.0f);
-    m->hz[1] = 440.0f * fm_exp2f((float)(s->note[1] - 69) / 12.0f);
+    m->hz[0] = s->hz[0];
+    m->hz[1] = s->hz[1];
     m->interval = INTERVALS[k].semi;
     m->interval_name = INTERVALS[k].name;
+    m->pr[0] = s->pr[0] > 0.0f ? s->pr[0] : fm_exp2f((float)m->interval / 12.0f);   /* a chord's, or the pressure's */
+    m->pr[1] = s->pr[1] > 0.0f ? s->pr[1] : fm_exp2f((float)m->interval / 12.0f);
     m->beat = 2.5f + (s->linked ? fm_maxf(0.0f, t) * 6.0f : 0.0f);   /* a slow beat, faster in tension */
     /* the sun: 160 Hz at night, 900 at the horizon, 7 kHz at 65 degrees */
     if (h < -18.0f)
@@ -104,7 +111,9 @@ void sky_map(const sky_t *s, sky_map_t *m)
 
 /* ------------------------------------------------------------------ the state --- */
 static volatile sky_map_t target;        /* the main loop writes, the render reads (word-sized fields) */
-static volatile int32_t target_on, target_planet;
+static volatile int32_t target_on, target_planet, target_chord;   /* chord: the partners are a chord's tones */
+static volatile int8_t target_scale[7];
+static volatile float target_root;
 static int16_t *dly, *ap_line[4], *rv_line[4];
 static uint32_t dly_i, ap_i[4], rv_i[4];
 
@@ -126,7 +135,7 @@ typedef struct {                         /* a struck partial of a planet's voice
 } ping_t;
 
 static struct {                          /* where the render is: each glides to the target */
-    float ratio, beat, cutoff, q, sub, morph, verb, delay, feedback, noise, dry, drift, storm, level;
+    float pr[2], beat, cutoff, q, sub, morph, verb, delay, feedback, noise, dry, drift, storm, level;
     engine_t eng;                        /* the planet's engine, gliding */
     drone_t d[2];
     uint32_t phR, phW;                   /* the ring's oscillator; the tape's wow */
@@ -168,10 +177,16 @@ int eng_init(void)
 void eng_sky(const sky_t *s)
 {
     sky_map_t m;
+    int i;
     sky_map(s, &m);
     target.hz[0] = m.hz[0];
     target.hz[1] = m.hz[1];
-    target.interval = m.interval;
+    target.pr[0] = m.pr[0];
+    target.pr[1] = m.pr[1];
+    target_chord = s->pr[0] > 0.0f;
+    for (i = 0; i < 7; i++)
+        target_scale[i] = s->scale[i];
+    target_root = s->root_hz;
     target.beat = m.beat;
     target.cutoff = m.cutoff;
     target.q = m.q;
@@ -232,28 +247,41 @@ static void strike(float hz, float amp, float tau, float mod_ratio, float index,
 
 static float semi(int32_t s) { return fm_exp2f((float)s / 12.0f); }
 
+/* a degree of the planet's scale, any octave: its frequency over the root */
+static float degree(int32_t d)
+{
+    int32_t o = d >= 0 ? d / 7 : (d - 6) / 7;
+    return fm_exp2f((float)o + (float)target_scale[d - o * 7] / 12.0f);
+}
+
 static void pulse(int32_t planet, int32_t k, float base)
 {
-    static const int8_t MAJ[5] = {0, 2, 4, 7, 9}, MIN[5] = {0, 3, 5, 7, 10};
-    const int8_t *pent = e.beat > 6.0f ? MIN : MAJ;   /* minor under tension */
-    int32_t iv = (int32_t)(fm_log2f(e.ratio) * 12.0f + 0.5f);
     switch (planet) {
-    case PL_MERCURY: {                   /* GLINT: quick high sparks up the chord */
-        int32_t t[4] = {0, iv, 12, 12 + iv};
-        float f = base * 8.0f * semi(t[k & 3]);
-        strike(f, 0.10f, 0.12f, 0.0f, 0.0f, 0.0f, 0);
-        strike(f * 2.01f, 0.04f, 0.07f, 0.0f, 0.0f, 0.0f, 0);
+    case PL_SUN:                         /* FLARE: a soft, bright chord of the scale flaring high and fading */
+        strike(base * 4.0f, 0.05f, 1.6f, 2.0f, 0.6f, 0.4f, 0);
+        strike(base * 4.0f * degree(2), 0.04f, 1.6f, 2.0f, 0.6f, 0.4f, (int32_t)(0.03f * SR));
+        strike(base * 4.0f * degree(4), 0.04f, 1.6f, 2.0f, 0.6f, 0.4f, (int32_t)(0.06f * SR));
+        break;
+    case PL_MOON: {                      /* RIPPLE: tiny glassy drops, wandering the scale like water */
+        static int32_t at = 0;
+        at += (int32_t)(e.rnd % 3u) - 1;
+        at = at < 0 ? 0 : at > 9 ? 9 : at;
+        strike(base * 8.0f * degree(at), 0.035f, 0.22f, 0.0f, 0.0f, 0.0f, 0);
         break;
     }
-    case PL_VENUS:                       /* BELLS: FM bells walking the pentatonic as a pentagram */
-        strike(base * 4.0f * semi(pent[(k * 2) % 5]), 0.16f, 1.1f, 3.5f, 2.2f, 0.12f, 0);
+    case PL_MERCURY:                     /* GLINT: quick high sparks up the chord */
+        strike(base * 8.0f * degree((k & 3) * 2), 0.10f, 0.12f, 0.0f, 0.0f, 0.0f, 0);
+        strike(base * 16.0f * degree((k & 3) * 2) * 1.005f, 0.04f, 0.07f, 0.0f, 0.0f, 0.0f, 0);
+        break;
+    case PL_VENUS:                       /* BELLS: FM bells walking the scale as a seven-pointed star */
+        strike(base * 4.0f * degree((k * 3) % 7), 0.16f, 1.1f, 3.5f, 2.2f, 0.12f, 0);
         break;
     case PL_MARS:                        /* PULSE: a low double beat, a heartbeat */
         strike(base * 0.5f, 0.55f, 0.09f, 0.0f, 0.0f, 0.0f, 0);
         strike(base * 0.5f, 0.35f, 0.09f, 0.0f, 0.0f, 0.0f, (int32_t)(0.19f * SR));
         break;
     case PL_SATURN: {                    /* RINGS: an inharmonic chime with a long tail */
-        float f = base * 2.0f * semi(iv);
+        float f = base * 2.0f * degree(4);
         strike(f, 0.10f, 3.0f, 0.0f, 0.0f, 0.0f, 0);
         strike(f * 2.76f, 0.055f, 2.0f, 0.0f, 0.0f, 0.0f, 0);
         strike(f * 5.40f, 0.035f, 1.3f, 0.0f, 0.0f, 0.0f, 0);
@@ -285,14 +313,14 @@ static void voices_block(uint32_t n)
     e.until -= (int32_t)n;
     if (e.until <= 0) {
         if (e.planet != PL_JUPITER)
-            pulse(e.planet, e.step, e.d[0].hz);
+            pulse(e.planet, e.step, target_root > 0.0f ? target_root : e.d[0].hz);
         e.step++;
         e.until += (int32_t)(PL_PERIOD[e.planet] * SR);
     }
 }
 
 /* ---- a drone's block: its wanders, its pitch, its filter */
-static void drone_block(drone_t *d, float hz, float cutoff, uint32_t frames)
+static void drone_block(drone_t *d, float hz, float pratio, float cutoff, uint32_t frames)
 {
     float sp = 0.02f + 0.12f * e.drift, depth = e.drift, pr;
     d->hz = glide(d->hz, hz, 0.003f);
@@ -301,7 +329,8 @@ static void drone_block(drone_t *d, float hz, float cutoff, uint32_t frames)
     d->dl = fm_clampf(d->dl + rnd_pm() * sp, -1.0f, 1.0f) * 0.999f;
     d->dd = fm_clampf(d->dd + rnd_pm() * sp, -1.0f, 1.0f) * 0.999f;
     hz = d->hz * fm_exp2f(d->dp * (3.0f + 30.0f * depth * depth) / 1200.0f);
-    pr = e.eng.pr_fixed > 0.0f ? e.eng.pr_fixed : e.ratio * e.eng.pr_mul;
+    /* a chord's tone; else the planet's partner (Saturn's inharmonic one), or the pressure's interval */
+    pr = target_chord ? pratio : e.eng.pr_fixed > 0.0f ? e.eng.pr_fixed : pratio * e.eng.pr_mul;
     d->inc = hz * TO32;
     d->incp = hz * pr * fm_exp2f((e.beat + d->dd * 4.0f * depth) / 1200.0f) * TO32;
     d->incs = hz * 0.5f * TO32;
@@ -356,7 +385,8 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
     if (!e.started) {                    /* the first block: start where the sky is */
         e.d[0].hz = target.hz[0];
         e.d[1].hz = target.hz[1];
-        e.ratio = fm_exp2f((float)target.interval / 12.0f);
+        e.pr[0] = target.pr[0];
+        e.pr[1] = target.pr[1];
         e.beat = target.beat;
         e.cutoff = target.cutoff;
         e.q = target.q;
@@ -372,7 +402,8 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
         e.started = 1;
     }
     /* a block's glides (5.8 ms): the interval ~4 s, the filters ~1 s, the moon ~6 s, the space ~2 s */
-    e.ratio = glide(e.ratio, fm_exp2f((float)target.interval / 12.0f), 0.0015f);
+    e.pr[0] = glide(e.pr[0], target.pr[0], 0.004f);   /* the partners follow the chords over ~1.5 s */
+    e.pr[1] = glide(e.pr[1], target.pr[1], 0.004f);
     e.beat = glide(e.beat, target.beat, 0.003f);
     e.cutoff = glide(e.cutoff, target.cutoff, 0.006f);
     e.q = glide(e.q, target.q, 0.002f);
@@ -410,8 +441,8 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
         e.eng.noise = glide(e.eng.noise, t->noise, k);
         e.eng.verb = glide(e.eng.verb, t->verb, k);
     }
-    drone_block(&e.d[0], target.hz[0], e.cutoff, n);
-    drone_block(&e.d[1], target.hz[1], e.cutoff * 1.12f, n);
+    drone_block(&e.d[0], target.hz[0], e.pr[0], e.cutoff, n);
+    drone_block(&e.d[1], target.hz[1], e.pr[1], e.cutoff * 1.12f, n);
     voices_block(n);
     incR = (e.d[0].hz * 2.71f + 3.0f) * TO32;
     incW = 0.37f * TO32;

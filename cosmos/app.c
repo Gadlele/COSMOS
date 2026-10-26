@@ -1,18 +1,26 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 the COSMOS contributors */
-/* COSMOS, stage 2 (app.h): the sky computed, drawn, and playing.
+/* COSMOS (app.h): the sky computed, drawn, and playing.
  *
- * THE SKY (the main screen): the stars, the planets and the moon where they are above the chosen city now, on the
- * whole square. The sun, the moon and the clouds decide what shows (a full moon or a daylight sky hides the faint
- * stars); Kp makes the stars twinkle. Touch anything and the readings fade in over the sky in white Terminus,
+ * THE SKY (the main screen): the sun, the moon, the planets and the stars where they are above the chosen place now,
+ * on the whole square. The sun, the moon and the clouds decide what shows (a full moon or a daylight sky hides the
+ * faint stars); Kp makes the stars twinkle. Touch anything and the readings fade in over the sky in white Terminus,
  * hold, and fade out after two seconds.
  *   the sun's height and the moon's cycle come from the sky; the weather from the knobs (MANUAL) or drifting by
  *   itself (RANDOM): K2 CLOUDS (%)   K3 PRESS (hPa)   K4 KP   PRESET the pressure's trend (turning one: MANUAL)
- *   SELECT a planet on the screen (its engine and its voice)   SEL the pressure in the harmony, or not
- *   keys: the left half (F3..F#4) drone 1's note, the right half (G4..G5) drone 2's   OCT- / OCT+ their octave
- *   PLAY the drones on or off   MASTER the volume   HOME the settings
- * THE SETTINGS: the city, the date and the time (local), the weather. SELECT picks a row, ALGO changes it a step,
- * PRESET a big step, HOME saves and goes back. Without WiFi (stage 3) the clock runs from the time set here.
+ *   SELECT one of the seven planets on the screen (the Sun and the Moon among them), or none
+ *   SEL the pressure in the harmony, or not   OCT- / OCT+ the octave   PLAY the drones on or off   MASTER the volume
+ *   HOME the settings
+ * THE HARMONY. With no planet, the keyboard's left half (F3..F#4) sets drone 1's note and its right half (G4..G5)
+ * drone 2's, freely. A chosen planet brings its note (its period raised by octaves into hearing: Cousto's cosmic
+ * octave, exact under TUNING COSMIC, the nearest tempered note under EQUAL), a scale in the mode the sun's height
+ * gives (Phrygian at night .. Lydian at noon), and four chords of its own on that scale, one every 10 s: drone 1 the
+ * chord's root, its partner the fifth, drone 2 the third, its partner coloured by the pressure (the octave high and
+ * steady, the seventh as it falls, a suspension and the ninth deep down). The keys then play the scale only: a key
+ * moves its drone to the nearest note of the scale while held and for 10 s after, then the chords go on.
+ * THE SETTINGS: latitude, longitude, the offset from UTC, summer time, the date and the time (local), the weather, the
+ * tuning. SELECT picks a row, ALGO changes it a step, PRESET a big step, HOME saves and goes back. Without WiFi
+ * (stage 3) the clock runs from the time set here.
  * Part of the unity build (device/unity.c), after the platform: gfx.c is in scope. */
 #include "fastmath.h"
 #include "dsp/engine.h"
@@ -29,25 +37,29 @@ extern const uint32_t shim_heap_size;
 #define FIRST_KEY_NOTE 53                /* key 0 is F3 */
 #define SPLIT_KEY 14                     /* keys 0..13 (F3..F#4) drone 1, 14..26 (G4..G5) drone 2 */
 #define DEFAULT_UNIX 1793037600u         /* 2026-10-26 18:00 UTC: until a time is set */
-#define SET_MAGIC 0x434F5331u            /* "COS1" */
+#define SET_MAGIC 0x434F5332u            /* "COS2" */
 #define FADE_HOLD_MS 2300u
+#define CHORD_MS 10000u                  /* a chord every 10 s */
+#define KEY_HOLD_MS 10000u               /* a key's note stays 10 s after it is let go */
 
 /* ---------------------------------------------------------------- the state --- */
 static struct {                          /* kept in the store (OBJ_SETTINGS) */
     uint32_t magic;
     uint32_t unix_saved;                 /* the clock when it was saved */
-    uint8_t city, weather, linked, octave;   /* weather: 0 MANUAL, 1 RANDOM */
-    uint8_t pc[2];
-    int8_t trend, pad;
+    int16_t lat100, lon100;              /* the place: hundredths of a degree, north and east positive */
+    int8_t utc4;                         /* the offset from UTC, quarter hours */
+    uint8_t summer, weather, linked;     /* summer time; weather 0 MANUAL, 1 RANDOM; the pressure in the harmony */
+    uint8_t octave, tuning;              /* tuning 0 COSMIC, 1 EQUAL */
+    uint8_t pc[2];                       /* the drones' notes with no planet: pitch classes */
+    int8_t trend, pad[3];
     float clouds, press, kp;
 } set;
 
 static sky_t sky = {.sun = 20.0f, .clouds = 30.0f, .press = 1015.0f, .trend = 0, .kp = 1.67f, .moon = 0.4f,
-                    .note = {45, 52}, .linked = 1, .planet = PL_NONE, .on = 1};
+                    .hz = {110.0f, 164.81f}, .linked = 1, .planet = PL_NONE, .on = 1};
 static sky_now_t now_sky;                /* the last astro_now */
 static uint8_t star_x[NSTARS], star_y[NSTARS];   /* the stars on the screen (y 255: not up, or off the square) */
-static int16_t pl_x[5], pl_y[5];         /* the planets on the screen (-1: not seen) */
-static int16_t moon_x = -1, moon_y;
+static int16_t pl_x[PL_N], pl_y[PL_N];   /* each planet on the screen, by PL_* (x -1: not seen) */
 static float limit;                      /* the faintest magnitude the sky lets through now */
 static volatile int panic;
 static int eng_ok;
@@ -65,6 +77,11 @@ static struct {
     char msg[2][24];
     uint32_t msg_until;
     int dirty;                           /* settings changed: save on leaving the page */
+    uint32_t chords_t0;                  /* when the chosen planet's chords began */
+    int32_t chord;                       /* the chord playing, 0..3 */
+    int32_t mode;                        /* the scale's mode, 0 Phrygian .. 5 Lydian */
+    int32_t key_deg[2];                  /* each drone's key: the scale degree it plays */
+    uint32_t key_until[2];               /* until when (plat_ms); held keys keep pushing it on */
 } ui = {.rnd = 0x2545F491u};
 
 static uint32_t unix_now(void) { return ui.clock_unix + (plat_ms() - ui.clock_ms) / 1000u; }
@@ -88,24 +105,126 @@ static float gauss(void)                 /* roughly normal: the sum of four unif
         s += (float)(rnd() & 0xFFFFu) / 65536.0f;
     return (s - 2.0f) * 1.732f;
 }
+static int32_t utc_offset_s(void) { return (int32_t)set.utc4 * 900 + (set.summer ? 3600 : 0); }
 
-/* each drone's note from its pitch class: drone 1 in the octave, drone 2 the first such note above drone 1 */
-static void notes(void)
+/* ------------------------------------------------------------- the harmony --- */
+/* each planet's note: its period raised by octaves into hearing (Hans Cousto's cosmic octave): the Earth's year for
+ * the Sun, the synodic month for the Moon, each planet's orbit; and the nearest tempered note (MIDI) */
+static const float COSMIC_HZ[PL_N] = {0.0f, 126.22f, 210.42f, 141.27f, 221.23f, 144.72f, 183.58f, 147.85f};
+static const int8_t EQUAL_NOTE[PL_N] = {0, 47, 56, 49, 57, 50, 54, 50};   /* B2 G#3 C#3 A3 D3 F#3 D3 */
+/* the modes from dark to bright, as the sun climbs */
+static const int8_t MODES[6][7] = {
+    {0, 1, 3, 5, 7, 8, 10},              /* Phrygian: deep night */
+    {0, 2, 3, 5, 7, 8, 10},              /* Aeolian: night */
+    {0, 2, 3, 5, 7, 9, 10},              /* Dorian: dawn and dusk */
+    {0, 2, 4, 5, 7, 9, 10},              /* Mixolydian: a low sun */
+    {0, 2, 4, 5, 7, 9, 11},              /* Ionian: day */
+    {0, 2, 4, 6, 7, 9, 11},              /* Lydian: a high sun */
+};
+static const char *const MODE_NAME[6] = {"PHR", "AEO", "DOR", "MIX", "ION", "LYD"};
+/* each planet's four chords: scale degrees, 0 the root */
+static const int8_t PROG[PL_N][4] = {
+    {0, 0, 0, 0}, {0, 4, 5, 3}, {0, 5, 2, 3}, {0, 1, 3, 4}, {0, 3, 5, 4}, {0, 6, 5, 4}, {0, 3, 1, 4}, {0, 2, 6, 5}};
+static const char *const ROMAN[7] = {"I", "II", "III", "IV", "V", "VI", "VII"};
+
+static int32_t mode_of_sun(float h)
 {
-    sky.note[0] = 12 * (set.octave + 1) + set.pc[0];
-    sky.note[1] = 12 * (set.octave + 1) + set.pc[1];
-    if (sky.note[1] <= sky.note[0])
-        sky.note[1] += 12;
+    return h < -18.0f ? 0 : h < -6.0f ? 1 : h < 0.0f ? 2 : h < 12.0f ? 3 : h < 30.0f ? 4 : 5;
+}
+/* a scale degree (any, negative too) in semitones above the root */
+static int32_t semis(int32_t d)
+{
+    int32_t o = d >= 0 ? d / 7 : (d - 6) / 7;
+    return 12 * o + MODES[ui.mode][d - 7 * o];
+}
+static float ratio(int32_t s) { return fm_exp2f((float)s / 12.0f); }
+
+/* the planet's root, in the drones' octave (C of the octave up to the next C) */
+static float root_hz(int32_t p)
+{
+    float f = set.tuning ? 440.0f * fm_exp2f((float)(EQUAL_NOTE[p] - 69) / 12.0f) : COSMIC_HZ[p];
+    float lo = 65.406f * fm_exp2f((float)(set.octave - 2));
+    while (f >= 2.0f * lo)
+        f *= 0.5f;
+    while (f < lo)
+        f *= 2.0f;
+    return f;
+}
+
+/* the nearest scale degree to a key (MIDI), within the octave above the root */
+static int32_t key_degree(int32_t note, float root)
+{
+    float rel = (float)note - (69.0f + 12.0f * fm_log2f(root / 440.0f));
+    int32_t pc = ((int32_t)(rel + 0.5f + 1200.0f)) % 12, best = 0, bd = 99, d;
+    for (d = 0; d < 7; d++) {
+        int32_t dist = pc - MODES[ui.mode][d];
+        if (dist < 0)
+            dist = -dist;
+        if (dist > 6)
+            dist = 12 - dist;
+        if (dist < bd) {
+            bd = dist;
+            best = d;
+        }
+    }
+    return best;
+}
+
+/* what the drones play now: free notes with no planet; else the planet's chord, or a key's note of the scale */
+static void harmony(void)
+{
+    uint32_t now = plat_ms();
+    int32_t p = sky.planet, i;
+    if (p == PL_NONE) {                  /* drone 1 in the octave, drone 2 the first such note above it */
+        int32_t n0 = 12 * (set.octave + 1) + set.pc[0], n1 = 12 * (set.octave + 1) + set.pc[1];
+        if (n1 <= n0)
+            n1 += 12;
+        sky.hz[0] = 440.0f * fm_exp2f((float)(n0 - 69) / 12.0f);
+        sky.hz[1] = 440.0f * fm_exp2f((float)(n1 - 69) / 12.0f);
+        sky.pr[0] = sky.pr[1] = 0.0f;    /* the pressure's interval */
+        sky.root_hz = 0.0f;
+        return;
+    }
+    {
+        float root = root_hz(p), t = sky.linked ? tension(&sky) : -1.0f;
+        int32_t d = PROG[p][ui.chord], a = d, b = d + 2, top;
+        ui.mode = mode_of_sun(sky.sun);
+        ui.chord = (int32_t)((now - ui.chords_t0) / CHORD_MS % 4u);
+        d = PROG[p][ui.chord];
+        a = d;
+        b = t >= 1.3f ? d + 3 : d + 2;   /* deep low pressure: a suspension */
+        if (now < ui.key_until[0])
+            a = ui.key_deg[0];
+        if (now < ui.key_until[1])
+            b = ui.key_deg[1] + 7;       /* drone 2's keys an octave over drone 1's */
+        while (semis(b) <= semis(a))
+            b += 7;
+        /* drone 2's partner: the octave of the root high and steady, the seventh as it falls, the ninth deep down */
+        top = t < 0.3f ? a + 7 : t < 1.3f ? b + 4 : b + 5;
+        while (semis(top) <= semis(b))
+            top += 7;
+        sky.hz[0] = root * ratio(semis(a));
+        sky.hz[1] = root * ratio(semis(b));
+        sky.pr[0] = ratio(semis(a + 4) - semis(a));   /* drone 1's partner: the fifth */
+        sky.pr[1] = ratio(semis(top) - semis(b));
+        sky.root_hz = root;
+        for (i = 0; i < 7; i++)
+            sky.scale[i] = MODES[ui.mode][i];
+    }
 }
 
 static void defaults(void)
 {
     set.magic = SET_MAGIC;
     set.unix_saved = DEFAULT_UNIX;
-    set.city = 0;                        /* ROMA */
+    set.lat100 = 4190;                   /* 41.9 N, 12.5 E */
+    set.lon100 = 1250;
+    set.utc4 = 4;
+    set.summer = 0;
     set.weather = 1;
     set.linked = 1;
     set.octave = 2;
+    set.tuning = 0;
     set.pc[0] = 9;
     set.pc[1] = 4;
     set.trend = 0;
@@ -129,7 +248,8 @@ static void save(void)
 void app_init(void)
 {
     if (plat_store_load(OBJ_SETTINGS, &set, sizeof set) != (int)sizeof set || set.magic != SET_MAGIC
-        || set.city >= NCITIES || set.octave < 1 || set.octave > 4 || set.pc[0] > 11 || set.pc[1] > 11)
+        || set.lat100 < -9000 || set.lat100 > 9000 || set.lon100 < -18000 || set.lon100 > 18000 || set.octave < 1
+        || set.octave > 4 || set.pc[0] > 11 || set.pc[1] > 11)
         defaults();
     clock_set(set.unix_saved);           /* the clock goes on from where it was saved */
     sky.clouds = set.clouds;
@@ -138,7 +258,7 @@ void app_init(void)
     sky.trend = set.trend;
     sky.linked = set.linked;
     eng_ok = eng_init() == 0;            /* the delay and the reverb, before WiFi takes the heap */
-    notes();
+    harmony();
     eng_sky(&sky);
 }
 
@@ -180,11 +300,21 @@ void app_splash(void)
 }
 
 /* ------------------------------------------------------------------ the sky --- */
+static void place(altaz_t p, int32_t pl, float mag, int edge)
+{
+    int32_t x, y;
+    pl_x[pl] = -1;
+    if (mag <= limit + (sky.sun < 0.0f ? 2.5f : 0.0f) && astro_project(p, &x, &y) && x >= edge && y >= edge
+        && x < 240 - edge && y < 240 - edge) {
+        pl_x[pl] = (int16_t)x;
+        pl_y[pl] = (int16_t)y;
+    }
+}
+
 /* where everything is now; the sun and the moon to the engine; which planets are seen */
 static void sky_update(void)
 {
-    const city_t *c = &CITIES[set.city];
-    float lat = (float)c->lat100 / 100.0f, lon = (float)c->lon100 / 100.0f;
+    float lat = (float)set.lat100 / 100.0f, lon = (float)set.lon100 / 100.0f;
     int32_t i, x, y;
     astro_now((int32_t)(unix_now() - (uint32_t)J2000_UNIX), lat, lon, &now_sky);
     sky.sun = now_sky.sun_alt;
@@ -210,26 +340,16 @@ static void sky_update(void)
             star_y[i] = 255;
         }
     }
-    for (i = 0; i < 5; i++) {            /* a planet is seen while it is drawn: up, on the square, bright enough */
-        if (now_sky.planet_mag[i] <= limit + (sky.sun < 0.0f ? 2.5f : 0.0f) && astro_project(now_sky.planet[i], &x, &y)
-            && x >= 2 && y >= 2 && x < 238 && y < 238) {
-            pl_x[i] = (int16_t)x;
-            pl_y[i] = (int16_t)y;
-        } else {
-            pl_x[i] = -1;
-        }
-    }
-    moon_x = -1;
-    if (sky.sun < 8.0f && astro_project(now_sky.moon_pos, &x, &y)) {
-        moon_x = (int16_t)x;
-        moon_y = (int16_t)y;
-    }
-    /* a chosen planet that leaves the screen takes its engine and its voice along */
-    if (sky.planet != PL_NONE && pl_x[sky.planet - 1] < 0) {
+    /* each body is seen while it is drawn: up, on the square, bright enough; the Sun whenever it is up */
+    for (i = 0; i < 5; i++)
+        place(now_sky.planet[i], PL_MERCURY + i, now_sky.planet_mag[i], 2);
+    place(now_sky.sun_pos, PL_SUN, -26.0f, 6);
+    place(now_sky.moon_pos, PL_MOON, sky.sun < 8.0f ? -12.0f : 99.0f, 5);
+    /* a chosen planet that leaves the screen takes its engine, its voice and its chords along */
+    if (sky.planet != PL_NONE && pl_x[sky.planet] < 0) {
         app_say(planet_name(sky.planet), "GONE");
         sky.planet = PL_NONE;
     }
-    eng_sky(&sky);
 }
 
 /* the weather drifting by itself, each source at its own pace (offline, and until WiFi brings the real one) */
@@ -282,6 +402,15 @@ static char *put2(char *d, int32_t v)    /* two digits */
     *d = 0;
     return d;
 }
+static char *put_dec1(char *d, int32_t v100)   /* hundredths as one decimal, unsigned: 4190 -> "41.9" */
+{
+    int32_t a = v100 < 0 ? -v100 : v100, t = (a + 5) / 10;
+    d = put_int(d, t / 10);
+    *d++ = '.';
+    *d++ = (char)('0' + t % 10);
+    *d = 0;
+    return d;
+}
 static int32_t round_f(float v) { return (int32_t)(v < 0.0f ? v - 0.5f : v + 0.5f); }
 
 /* left (16 columns, padded) and right (12, right-aligned) into one line */
@@ -317,14 +446,29 @@ static void field(char *out, const char *label, const char *value, int w)
     out[w] = 0;
 }
 
-/* the local time at the chosen city: hours, minutes; and the date */
+/* the place as "41.9N 12.5E" */
+static void place_text(char *d)
+{
+    d = put_dec1(d, set.lat100);
+    d = put(d, set.lat100 >= 0 ? "N " : "S ");
+    d = put_dec1(d, set.lon100);
+    put(d, set.lon100 >= 0 ? "E" : "W");
+}
+/* the local time: the date, the hour, the minute */
 static void local_time(uint32_t u, int32_t *y, int32_t *mo, int32_t *d, int32_t *h, int32_t *mi)
 {
-    const city_t *c = &CITIES[set.city];
-    uint32_t l = u + (uint32_t)utc_offset(u, c->utc4, c->dst);
+    uint32_t l = u + (uint32_t)utc_offset_s();
     civil_from_days((int32_t)(l / 86400u), y, mo, d);
     *h = (int32_t)(l % 86400u / 3600u);
     *mi = (int32_t)(l % 3600u / 60u);
+}
+/* a pitch as its nearest note's name: "A2", "C#3" */
+static char *note_name(char *d, float hz)
+{
+    static const char *const NOTE[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    int32_t n = round_f(69.0f + 12.0f * fm_log2f(hz / 440.0f));
+    d = put(d, NOTE[(n % 12 + 12) % 12]);
+    return put_int(d, n / 12 - 1);
 }
 
 #define NLINES 11
@@ -332,17 +476,15 @@ static void local_time(uint32_t u, int32_t *y, int32_t *mo, int32_t *d, int32_t 
 /* the readings, line by line, with their colours */
 static void readings(char lines[NLINES][32], uint16_t col[NLINES])
 {
-    static const char *const NOTE[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
     sky_map_t m;
     char l[32], r[32], v[20], *q;
     int32_t fil, y, mo, d, h, mi, i;
     sky_map(&sky, &m);
     for (i = 0; i < NLINES; i++)
         col[i] = C_TXT;
-    q = put(v, NOTE[sky.note[0] % 12]);
-    q = put_int(q, sky.note[0] / 12 - 1);
-    q = put(put(q, " "), NOTE[sky.note[1] % 12]);
-    put_int(q, sky.note[1] / 12 - 1);
+    q = note_name(v, sky.hz[0]);
+    q = put(q, " ");
+    note_name(q, sky.hz[1]);
     line2(lines[0], sky.on ? "COSMOS" : "COSMOS  (OFF)", v);
     copy(lines[1], "----------------------------", 32);
     col[1] = C_LOW;
@@ -361,7 +503,12 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
     q = put_int(v, round_f(sky.press));
     put(q, sky.trend < 0 ? " v" : sky.trend > 0 ? " ^" : " =");
     field(l, "PRESS", v, 12);
-    field(r, "PARTNER", sky.linked ? m.interval_name : "8VA", 12);
+    if (sky.planet != PL_NONE) {         /* the chord's colour */
+        float t = sky.linked ? tension(&sky) : -1.0f;
+        field(r, "CHORD", t < 0.3f ? "TRIAD" : t < 1.3f ? "7TH" : "SUS 9", 12);
+    } else {
+        field(r, "PARTNER", sky.linked ? m.interval_name : "8VA", 12);
+    }
     line2(lines[4], l, r);
     q = put_int(v, round_f(sky.kp * 10.0f) / 10);
     q = put(q, ".");
@@ -381,12 +528,15 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
     line2(lines[6], l, r);
     copy(lines[7], "----------------------------", 32);
     col[7] = C_LOW;
-    if (sky.planet != PL_NONE) {
-        field(l, "PLANET", planet_name(sky.planet), 16);
-        line2(lines[8], l, planet_voice(sky.planet));
+    if (sky.planet != PL_NONE) {         /* the planet, its voice; the mode and the chord */
+        q = put(l, planet_name(sky.planet));
+        put(put(q, " "), planet_voice(sky.planet));
+        q = put(v, MODE_NAME[ui.mode]);
+        put(put(q, " "), ROMAN[PROG[sky.planet][ui.chord] % 7]);
+        line2(lines[8], l, v);
     } else {
         int seen = 0;
-        for (i = 0; i < 5; i++)
+        for (i = 1; i < PL_N; i++)
             seen += pl_x[i] >= 0;
         put(put_int(v, seen), seen == 1 ? " PLANET IN SIGHT" : " PLANETS IN SIGHT");
         copy(lines[8], seen ? v : "NO PLANET IN SIGHT", 32);
@@ -396,7 +546,7 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
         line2(lines[9], ui.msg[0], ui.msg[1]);
     } else {
         local_time(unix_now(), &y, &mo, &d, &h, &mi);
-        copy(l, CITIES[set.city].name, 14);
+        place_text(l);
         q = put2(v, h);
         q = put(q, ":");
         put2(q, mi);
@@ -418,8 +568,16 @@ static uint16_t scale(uint16_t c, float a)  /* a colour at an opacity, over blac
             b = (int32_t)((float)(c & 31u) * a);
     return (uint16_t)(r << 11 | g << 5 | b);
 }
+static void disc(int32_t cx, int32_t cy, int32_t r, uint16_t c, int32_t y0)
+{
+    int32_t dx, dy;
+    for (dy = -r; dy <= r; dy++)
+        for (dx = -r; dx <= r; dx++)
+            if (dx * dx + dy * dy <= r * r + 1)
+                cv_pset(cx + dx, cy + dy - y0, c);
+}
 
-/* one frame of the sky, in five strips of 48 rows: stars, planets, the moon, then the readings at their opacity */
+/* one frame of the sky, in five strips of 48 rows: stars, planets, the moon, the sun, then the readings */
 static void sky_frame(void)
 {
     char lines[NLINES][32];
@@ -434,34 +592,27 @@ static void sky_frame(void)
             int32_t y = star_y[i], g;
             if (y == 255 || y < y0 || y >= y0 + 48)
                 continue;
-            g = 200 - (int32_t)((float)STARS[i].mag10 * 2.6f) - 39 + (int32_t)(rnd() % (uint32_t)(2 * tw + 1)) - tw;
+            g = 161 - (int32_t)((float)STARS[i].mag10 * 2.6f) + (int32_t)(rnd() % (uint32_t)(2 * tw + 1)) - tw;
             cv_pset(star_x[i], y - y0, grey(g < 40 ? 40 : g > 215 ? 215 : g));
         }
-        for (i = 0; i < 5; i++) {        /* the planets hold steady */
-            int32_t x = pl_x[i], y = pl_y[i], g = 205 - (int32_t)((now_sky.planet_mag[i] + 1.5f) * 18.0f);
+        for (i = PL_MERCURY; i <= PL_SATURN; i++) {   /* the planets hold steady */
+            int32_t x = pl_x[i], y = pl_y[i], g = 205 - (int32_t)((now_sky.planet_mag[i - PL_MERCURY] + 1.5f) * 18.0f);
             uint16_t c;
             if (x < 0 || y < y0 - 8 || y >= y0 + 56)
                 continue;
             c = grey(g < 120 ? 120 : g > 220 ? 220 : g);
             cv_pset(x, y - y0, c);
-            if (i == 1 || i == 3) {      /* Venus and Jupiter: 2 x 2 */
+            if (i == PL_VENUS || i == PL_JUPITER) {   /* 2 x 2 */
                 cv_pset(x + 1, y - y0, c);
                 cv_pset(x, y + 1 - y0, c);
                 cv_pset(x + 1, y + 1 - y0, c);
             }
-            if (i == 4) {                /* Saturn's rings */
+            if (i == PL_SATURN) {        /* its rings */
                 cv_pset(x - 1, y - y0, grey(g / 2));
                 cv_pset(x + 1, y - y0, grey(g / 2));
             }
-            if (sky.planet == i + 1)     /* chosen: four corners around it */
-                for (j = 0; j < 4; j++) {
-                    int32_t sx = j & 1 ? 1 : -1, sy = j & 2 ? 1 : -1, cx = x + (sx > 0 ? 5 : -4), cy = y + (sy > 0 ? 5 : -4);
-                    cv_pset(cx, cy - y0, grey(150));
-                    cv_pset(cx - sx, cy - y0, grey(150));
-                    cv_pset(cx, cy - sy - y0, grey(150));
-                }
         }
-        if (moon_x >= 0 && moon_y >= y0 - 5 && moon_y < y0 + 53) {   /* the moon, its phase drawn */
+        if (pl_x[PL_MOON] >= 0 && pl_y[PL_MOON] >= y0 - 5 && pl_y[PL_MOON] < y0 + 53) {   /* the moon in its phase */
             float k = now_sky.moon_lit;
             int waxing = now_sky.moon < 0.5f, dx, dy;
             for (dy = -4; dy <= 4; dy++)
@@ -473,8 +624,21 @@ static void sky_frame(void)
                     half = fm_sqrtf((float)(16 - dy * dy > 0 ? 16 - dy * dy : 0));
                     edge = half * (1.0f - 2.0f * k);
                     lit = waxing ? (float)dx > edge : (float)-dx > edge;
-                    cv_pset(moon_x + dx, moon_y + dy - y0, grey(lit ? 210 : 45));
+                    cv_pset(pl_x[PL_MOON] + dx, pl_y[PL_MOON] + dy - y0, grey(lit ? 210 : 45));
                 }
+        }
+        if (pl_x[PL_SUN] >= 0 && pl_y[PL_SUN] >= y0 - 7 && pl_y[PL_SUN] < y0 + 55) {   /* the sun: a disc, a halo */
+            disc(pl_x[PL_SUN], pl_y[PL_SUN], 6, grey(70), y0);
+            disc(pl_x[PL_SUN], pl_y[PL_SUN], 4, grey(235), y0);
+        }
+        if (sky.planet != PL_NONE && pl_x[sky.planet] >= 0) {   /* the chosen one: four corners around it */
+            int32_t x = pl_x[sky.planet], y = pl_y[sky.planet], r = sky.planet <= PL_MOON ? 9 : 5;
+            for (j = 0; j < 4; j++) {
+                int32_t sx = j & 1 ? 1 : -1, sy = j & 2 ? 1 : -1, cx = x + sx * r, cy = y + sy * r;
+                cv_pset(cx, cy - y0, grey(150));
+                cv_pset(cx - sx, cy - y0, grey(150));
+                cv_pset(cx, cy - sy - y0, grey(150));
+            }
         }
         if (ui.alpha > 0.01f)            /* the readings: a black outline, then the letters at their opacity */
             for (i = 0; i < NLINES; i++) {
@@ -494,65 +658,86 @@ static void sky_frame(void)
 }
 
 /* ------------------------------------------------------------- the settings --- */
-#define NROWS 4
+#define NROWS 8
 static void settings_frame(void)
 {
-    static const char *const LABEL[NROWS] = {"CITY", "DATE", "TIME", "WEATHER"};
-    char t[32], v[24], *q;
+    static const char *const LABEL[NROWS] = {"LATITUDE", "LONGITUDE", "UTC", "SUMMER TIME", "DATE", "TIME",
+                                             "WEATHER", "TUNING"};
+    char t[32], v[24], l[24], *q;
     int32_t y, mo, d, h, mi, i;
     local_time(unix_now(), &y, &mo, &d, &h, &mi);
-    for (i = 0; i < 13; i++) {
+    for (i = 0; i < 14; i++) {
+        uint16_t c = C_TXT;
         cv_begin(240, 16, C_BLACK);
         t[0] = 0;
-        if (i == 0)
+        if (i == 0) {
             copy(t, "SETTINGS", 32);
-        else if (i == 1 || i == 6)
+        } else if (i == 1 || i == 10) {
             copy(t, "----------------------------", 32);
-        else if (i >= 2 && i < 2 + NROWS) {
+            c = C_LOW;
+        } else if (i >= 2 && i < 2 + NROWS) {
             int r = i - 2;
-            if (r == 0)
-                copy(v, CITIES[set.city].name, 24);
-            else if (r == 1) {
+            switch (r) {
+            case 0:
+                put(put_dec1(v, set.lat100), set.lat100 >= 0 ? " N" : " S");
+                break;
+            case 1:
+                put(put_dec1(v, set.lon100), set.lon100 >= 0 ? " E" : " W");
+                break;
+            case 2:
+                q = put(v, set.utc4 >= 0 ? "+" : "-");
+                q = put_int(q, (set.utc4 < 0 ? -set.utc4 : set.utc4) / 4);
+                if (set.utc4 % 4) {
+                    q = put(q, ":");
+                    put2(q, (set.utc4 < 0 ? -set.utc4 : set.utc4) % 4 * 15);
+                }
+                break;
+            case 3:
+                copy(v, set.summer ? "ON" : "OFF", 24);
+                break;
+            case 4:
                 q = put_int(v, y);
                 q = put(q, "-");
                 q = put2(q, mo);
                 q = put(q, "-");
                 put2(q, d);
-            } else if (r == 2) {
+                break;
+            case 5:
                 q = put2(v, h);
                 q = put(q, ":");
                 put2(q, mi);
-            } else {
+                break;
+            case 6:
                 copy(v, set.weather ? "RANDOM" : "MANUAL", 24);
+                break;
+            default:
+                copy(v, set.tuning ? "EQUAL" : "COSMIC", 24);
+                break;
             }
-            {
-                char l[20];
-                copy(l, r == ui.row ? "> " : "  ", 20);
-                put(l + 2, LABEL[r]);
-                line2(t, l, v);
-            }
-        } else if (i == 7)
-            copy(t, "SELECT ROW   ALGO CHANGE", 32);
-        else if (i == 8)
-            copy(t, "PRESET BIG STEP", 32);
-        else if (i == 9)
-            copy(t, "HOME SAVE AND BACK", 32);
-        else if (i == 11) {
-            q = put(t, "CPU ");
-            q = put(put_int(q, (int32_t)plat_cpu_pct()), "%  HEAP ");
-            put(put_int(q, (int32_t)((shim_heap_size - shim_heap_used) / 1024u)), "K");
+            copy(l, r == ui.row ? "> " : "  ", 24);
+            put(l + 2, LABEL[r]);
+            line2(t, l, v);
+        } else if (i == 11) {
+            copy(t, "SELECT ROW  ALGO STEP", 32);
+            c = C_MID;
         } else if (i == 12) {
+            copy(t, "PRESET BIG  HOME BACK", 32);
+            c = C_MID;
+        } else if (i == 13) {
             int b = plat_battery();
-            q = put(t, "BATTERY ");
+            q = put(t, "CPU ");
+            q = put(put_int(q, (int32_t)plat_cpu_pct()), "% HEAP ");
+            q = put(put_int(q, (int32_t)((shim_heap_size - shim_heap_used) / 1024u)), "K BAT ");
             if (b == 4)
                 put(q, "USB");
             else if (b >= 0)
                 put(put_int(q, b * 100 / 3), "%");
             else
                 put(q, "-");
+            c = C_LOW;
         }
-        cv_text(8, 0, &FONT_S, t, i >= 7 && i <= 9 ? C_MID : i >= 11 ? C_LOW : (i == 1 || i == 6) ? C_LOW : C_TXT);
-        cv_blit(0, (uint32_t)(16 + i * 16));
+        cv_text(8, 0, &FONT_S, t, c);
+        cv_blit(0, (uint32_t)(8 + i * 16));
     }
 }
 
@@ -561,16 +746,40 @@ static void settings_change(int32_t step, int big)
     uint32_t u = unix_now();
     switch (ui.row) {
     case 0:
-        set.city = (uint8_t)(((int32_t)set.city + step * (big ? 5 : 1)) % (int32_t)NCITIES + (int32_t)NCITIES) % NCITIES;
+        set.lat100 = (int16_t)fm_clampf((float)(set.lat100 + step * (big ? 500 : 50)), -9000.0f, 9000.0f);
         break;
     case 1:
+        set.lon100 = (int16_t)(set.lon100 + step * (big ? 500 : 50));
+        if (set.lon100 > 18000)
+            set.lon100 = (int16_t)(set.lon100 - 36000);
+        if (set.lon100 < -18000)
+            set.lon100 = (int16_t)(set.lon100 + 36000);
+        break;
+    case 2:                              /* keeping the local time: the UTC clock moves the other way */
+        {
+            int32_t before = utc_offset_s();
+            set.utc4 = (int8_t)fm_clampf((float)(set.utc4 + step * (big ? 4 : 1)), -48.0f, 56.0f);
+            clock_set(u + (uint32_t)(before - utc_offset_s()));
+        }
+        break;
+    case 3:
+        {
+            int32_t before = utc_offset_s();
+            set.summer = !set.summer;
+            clock_set(u + (uint32_t)(before - utc_offset_s()));
+        }
+        break;
+    case 4:
         clock_set(u + (uint32_t)(step * (big ? 30 : 1) * 86400));
         break;
-    case 2:
+    case 5:
         clock_set(u + (uint32_t)(step * (big ? 3600 : 60)));
         break;
-    default:
+    case 6:
         set.weather = !set.weather;
+        break;
+    default:
+        set.tuning = !set.tuning;
         break;
     }
     ui.dirty = 1;
@@ -580,15 +789,15 @@ static void settings_change(int32_t step, int big)
 /* ------------------------------------------------------------------- input --- */
 static void input(void)
 {
-    uint32_t btn = plat_buttons(), down = btn & ~ui.btn, keys = plat_keys(), kdown = keys & ~ui.keys;
+    uint32_t btn = plat_buttons(), down = btn & ~ui.btn, keys = plat_keys(), kdown = keys & ~ui.keys, now = plat_ms();
     int32_t e1 = plat_enc(EN_K1), e2 = plat_enc(EN_K2), e3 = plat_enc(EN_K3), e4 = plat_enc(EN_K4);
     int32_t ea = plat_enc(EN_ALGO), ep = plat_enc(EN_PRESET), es = plat_enc(EN_SELECT);
-    int changed = 0, k;
+    int k;
     ui.btn = btn;
     ui.keys = keys;
     (void)e1;
     if (btn || keys || e1 || e2 || e3 || e4 || ea || ep || es)
-        ui.touched = plat_ms();
+        ui.touched = now;
     if (down >> B_HOME & 1u) {
         if (ui.screen == 1 && ui.dirty)
             save();
@@ -612,43 +821,44 @@ static void input(void)
             app_say("WEATHER", "MANUAL");
         }
         ui.dirty = 1;
-        changed = 1;
     }
     if (e2) sky.clouds = fm_clampf(sky.clouds + (float)e2 * 3.0f, 0.0f, 100.0f);
     if (e3) sky.press = fm_clampf(sky.press + (float)e3 * 1.0f, 965.0f, 1045.0f);
     if (e4) sky.kp = fm_clampf(sky.kp + (float)e4 * 0.33f, 0.0f, 9.0f);
     if (ep) sky.trend = (int32_t)fm_clampf((float)(sky.trend + (ep > 0 ? 1 : -1)), -1.0f, 1.0f);
-    if (es) {                            /* a planet in sight, or none: round the ones on the screen */
+    if (es) {                            /* round the planets on the screen, and none */
         int32_t p = sky.planet, n;
         for (n = 0; n < PL_N; n++) {
             p = ((p + (es > 0 ? 1 : -1)) % PL_N + PL_N) % PL_N;
-            if (p == PL_NONE || pl_x[p - 1] >= 0)
+            if (p == PL_NONE || pl_x[p] >= 0)
                 break;
         }
-        sky.planet = p;
-        changed = 1;
+        if (p != sky.planet) {
+            sky.planet = p;
+            ui.chords_t0 = now;          /* its chords from the first */
+            ui.key_until[0] = ui.key_until[1] = 0;
+        }
     }
     if (down >> B_SEL & 1u) {
         sky.linked = !sky.linked;
-        app_say("PRESSURE", sky.linked ? "SETS PARTNER" : "OFF: OCTAVE");
+        app_say("PRESSURE", sky.linked ? "IN HARMONY" : "LEFT OUT");
         ui.dirty = 1;
-        changed = 1;
     }
-    if (down >> B_OCTDN & 1u && set.octave > 1) { set.octave--; ui.dirty = 1; changed = 1; }
-    if (down >> B_OCTUP & 1u && set.octave < 4) { set.octave++; ui.dirty = 1; changed = 1; }
-    if (down >> B_PLAY & 1u) {
+    if (down >> B_OCTDN & 1u && set.octave > 1) { set.octave--; ui.dirty = 1; }
+    if (down >> B_OCTUP & 1u && set.octave < 4) { set.octave++; ui.dirty = 1; }
+    if (down >> B_PLAY & 1u)
         sky.on = !sky.on;
-        changed = 1;
-    }
-    for (k = 0; k < NKEYS; k++)
-        if (kdown >> k & 1u) {           /* the left half moves drone 1, the right half drone 2 */
-            set.pc[k >= SPLIT_KEY] = (uint8_t)((FIRST_KEY_NOTE + k) % 12);
-            ui.dirty = 1;
-            changed = 1;
+    for (k = 0; k < NKEYS; k++) {
+        int half = k >= SPLIT_KEY;
+        if (sky.planet == PL_NONE) {     /* free notes */
+            if (kdown >> k & 1u) {
+                set.pc[half] = (uint8_t)((FIRST_KEY_NOTE + k) % 12);
+                ui.dirty = 1;
+            }
+        } else if (keys >> k & 1u) {     /* the scale only: held, and 10 s after */
+            ui.key_deg[half] = key_degree(FIRST_KEY_NOTE + k, root_hz(sky.planet));
+            ui.key_until[half] = now + KEY_HOLD_MS;
         }
-    if (changed) {
-        notes();
-        eng_sky(&sky);
     }
 }
 void app_input_only(void) { input(); }
@@ -672,6 +882,8 @@ void app_frame(void)
             weather_tick((float)(now - ui.last_weather) / 3600000.0f);
         ui.last_weather = now;
     }
+    harmony();                           /* the chords move on their own: every frame */
+    eng_sky(&sky);
     if (ui.dirty && ui.screen == 0 && now - ui.touched > 10000u)   /* settings: saved once the hands are off */
         save();
     if (now - ui.last_save > 30u * 60u * 1000u)   /* and the clock, every half hour */
