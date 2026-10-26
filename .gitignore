@@ -5,3 +5,4 @@ __pycache__/
 probe/web/
 cosmos/web/*
 !cosmos/web/installer.html
+!cosmos/web/installer_hook.js

@@ -50,6 +50,9 @@ def main(app, pkg, version, out):
     own = app / "web" / "installer.html"
     if own.is_file():                        # the app's own page around fm1-base's installer script
         script = html[html.index('<script type="module">'):html.index("</script>", html.index('<script type="module">')) + 9]
+        hook = app / "web" / "installer_hook.js"   # the page's own additions, in the script's scope
+        if hook.is_file():
+            script = script[:-9] + hook.read_text(encoding="utf-8") + "</script>"
         html = own.read_text(encoding="utf-8").replace("<!--INSTALLER-SCRIPT-->", script)
     lib = strip_module((BASE / "web" / "fm1pkg.js").read_text(encoding="utf-8")) + "\n" + \
         strip_module((BASE / "web" / "fm1ota.js").read_text(encoding="utf-8"))

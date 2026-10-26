@@ -86,6 +86,9 @@ h2.plain { margin: 36px 0 12px; font: 400 21px/1.2 var(--display); border-top: 1
 .backup { border: 1px solid var(--warn); border-radius: 10px; padding: 12px 14px; margin: 0 0 14px; }
 .backup strong { color: var(--warn); }
 .lang { display: none; }
+.row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin: 12px 0; }
+.checked { font-size: 14px; color: var(--mid); }
+.checked.ok { color: var(--good); } .checked.bad { color: var(--err); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 dialog { max-width: 460px; border: 1px solid var(--rule); border-radius: 14px; padding: 24px; background: var(--panel); color: var(--text);
          box-shadow: 0 8px 40px rgba(0, 0, 0, .6); }
@@ -149,6 +152,8 @@ footer p { margin: 0 0 10px; } footer a { color: var(--mid); }
     <h2><span class="n">3</span>Connect</h2>
     <p>Connect the FM-1 by USB and switch it on. Close other programs that use MIDI (a DAW, an editor, another
       installer tab). The browser asks to allow <b>MIDI with SysEx</b>: allow it.</p>
+    <div class="row"><button type="button" id="check" class="ghost">Check the FM-1</button>
+      <span id="checkstatus" role="status" class="checked">Not checked yet.</span></div>
   </section>
 
   <section class="step">
