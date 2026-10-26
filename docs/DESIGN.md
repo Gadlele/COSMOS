@@ -6,8 +6,7 @@
 - **Network:** the connection, HTTPS (BearSSL) and download code comes from fm1-radio. The radio itself (Radio
   Garden, MP3/AAC decoders) is left out.
 - **Sound engine:** written from scratch.
-- **UI:** COSMOS's own, including every WiFi screen (network list, password, status, city). fm1-radio's UI is not
-  used.
+- **UI:** COSMOS's own, including every WiFi screen (network list, password, status). fm1-radio's UI is not used.
 
 ## Sound engine
 
@@ -92,29 +91,43 @@ Sun height, not clock time: the sound follows the seasons by itself, and dawn so
 
 ## Updates
 
-- Every 15–30 minutes the WiFi turns on, fetches pressure and clouds (Open-Meteo) and Kp (NOAA), syncs the time,
-  and turns off again.
-- fm1-base holds the sound for about a second when the WiFi starts. COSMOS makes it a breath: the drones fade out
-  before the connection and come back after.
-- Between readings the values glide to the new ones over the following minutes: no jumps.
+- The WiFi turns on at power-on (it holds the sound for about a second as it starts) and joins the networks it
+  knows: up to six, the last joined first, whichever is in range.
+- As soon as it is connected, and then every half hour, it fetches over HTTPS the weather at the player's
+  coordinates (Open-Meteo: cloud cover, sea-level pressure and its last three hours, which give the trend, and the
+  place's offset from UTC, summer time included) and the planetary Kp (NOAA). The servers' Date header sets the
+  clock. A fetch that fails is tried again in 5 minutes.
+- In HOME the values glide to the new ones over a few minutes: no jumps. Without news for three hours, the weather
+  drifts by itself again.
 - Sun, moon, planets and stars are computed on the FM-1 and need no network.
+- The servers' certificates are not checked (no roots, no clock to check them with): for weather numbers the worst a
+  man in the middle can do is change the weather.
+
+## WiFi (ENV)
+
+ENV opens the WiFi page, and closes it. The state, the network, the signal, how old the weather is, then the networks
+around, the strongest first (SAVED: known). SELECT picks one, SAVE joins it (a known or open one at once, else the
+password), FX looks again, REC turns WiFi off or on (offline), PLAY fetches now.
+
+The password: SELECT turns through the characters, ALGO jumps a group (abc ABC 123 #+=), PLAY adds, HOME deletes,
+SAVE joins (8 characters at least), SEL goes back to the list.
 
 ## Offline mode
 
-For players who do not want to connect it:
+With WiFi off (REC on the WiFi page), or no network in range:
 
 - Sun, moon, stars and planets work as online.
 - Clouds, pressure and Kp come from a randomizer: a simulated weather that drifts by itself, at each source's own
   pace (pressure over days, clouds over hours, a rare geomagnetic storm), so the sound keeps changing as online.
-- The city is picked from a list and kept.
-- The time is set by hand once; the FM-1 keeps counting while it is on.
-- No WiFi means no breath every half hour.
+- The place is set by its coordinates, the time and the offset from UTC by hand (GLO); the FM-1 keeps counting
+  while it is on, and a power-on starts from the time last saved.
 
 ## Controls
 
 | Button | |
 | --- | --- |
-| **HOME** | back to nature: the sun and the moon as they are, the weather as it comes (fetched over WiFi in stage 3; until then, or offline, drifting by itself) |
+| **HOME** | back to nature: the sun and the moon as they are, the weather as it comes (over WiFi; offline, or with no news for three hours, drifting by itself). The readings' last line says how old it is |
+| **ENV** | the WiFi page (above), and back; lit bright while the weather is the network's |
 | **EDIT** | everything by hand, the readings held on the screen: K1 the sun's height, K2 the clouds, K3 the pressure, K4 Kp, ALGO the moon's cycle, PRESET the pressure's trend |
 | **SEL** | the next planet up (in EDIT any of the seven classical ones), or none |
 | **LFO** | the sky alone (a touch brings the readings back for two seconds), and back |

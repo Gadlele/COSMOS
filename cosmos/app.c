@@ -60,7 +60,7 @@ static struct {                          /* kept in the store (OBJ_SETTINGS) */
     uint8_t octave, tuning;              /* tuning 0 COSMIC, 1 EQUAL, 2 NATURAL */
     uint8_t pc[2];                       /* with no planet, the chord's root: a pitch class ([1] unused) */
     int8_t trend;
-    uint8_t arp, pad[2];                 /* the arpeggiator on */
+    uint8_t arp, offline, pad;           /* the arpeggiator on; WiFi off (0: on, fetching the weather) */
     float clouds, press, kp, sun, moon;  /* the sky by hand (EDIT) */
 } set;
 
@@ -87,7 +87,7 @@ static struct {
     float alpha;                         /* the readings' opacity, 0..1 */
     uint32_t last_sky, last_weather, last_save, last_frame;
     uint32_t rnd;
-    int screen;                          /* 0 the sky, 1 the settings */
+    int screen;                          /* 0 the sky, 1 the settings, 2 WiFi (ENV), 3 a network's password */
     int row;                             /* the settings' row */
     char msg[2][24];
     uint32_t msg_until;
@@ -100,6 +100,14 @@ static struct {
     int view_sky;                        /* LFO: the sky alone, the readings only on a touch */
     uint32_t lit[4];                     /* the lights last set: bright and dim buttons, bright and dim keys */
     uint32_t sweep_x;                    /* the arpeggiator's line, the last column it reached */
+    /* the weather from the network */
+    uint32_t net_try, net_at;            /* plat_ms of the last fetch asked, of the last that brought the weather (0 none) */
+    int fetching, was_connected;
+    float wx_cloud, wx_press, wx_kp;     /* what it brought: HOME glides there */
+    int32_t wx_trend;
+    int pick;                            /* WiFi: the network picked in the list */
+    char ssid[33], pass[64];             /* the one being joined, its password as typed */
+    int plen, ch;                        /* the password's length, the character SELECT is on */
 } ui = {.rnd = 0x2545F491u};
 
 static uint32_t unix_now(void) { return ui.clock_unix + (plat_ms() - ui.clock_ms) / 1000u; }
@@ -411,6 +419,117 @@ static void weather_tick(float hours)
     }
 }
 
+/* ------------------------------------------------------------------ the network --- */
+#define FETCH_MS (30u * 60u * 1000u)     /* the weather every half hour */
+#define RETRY_MS (5u * 60u * 1000u)      /* a fetch that failed: again in 5 minutes */
+#define WX_FRESH_MS (3u * 3600u * 1000u) /* older than this, the weather drifts by itself again */
+
+static const char CHARS[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                            " !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+static const uint8_t GROUP[] = {0, 26, 52, 62};   /* abc ABC 123 #+= */
+#define NCHARS (sizeof CHARS - 1u)
+static const char *const WIFI_STATE[] = {"OFF", "STARTING", "ON", "JOINING", "ADDRESS", "CONNECTED", "FAILED"};
+
+/* for BearSSL's random generator: no hardware generator is set up, so the clocks and MASTER, mixed (BearSSL hashes
+ * it). Weak by a security standard; fine for weather numbers */
+void cosmos_entropy(uint8_t *p, unsigned n)
+{
+    static uint32_t carry = 0x9E3779B9u;
+    uint32_t h = carry ^ plat_ms();
+    unsigned i, k;
+    for (i = 0; i < n; i++) {
+        for (k = 0; k < 8u; k++) {
+            h ^= plat_ticks24() + plat_master() * 0x27D4EB2Fu;
+            h = (h ^ (h >> 15)) * 0x2C1B3C6Du;
+            h ^= h >> 12;
+        }
+        p[i] = (uint8_t)(h ^ (h >> 8) ^ (h >> 16) ^ (h >> 24));
+    }
+    carry = h;
+}
+
+/* "Mon, 26 Oct 2026 16:41:02 GMT" -> Unix time; 0 if it does not read */
+static uint32_t http_date(const char *d)
+{
+    static const char MON[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+    int32_t v[6] = {0, 0, 0, 0, 0, 0}, k = 0, m = 0, i;
+    while (*d && *d != ',')
+        d++;
+    if (!*d)
+        return 0;
+    d++;
+    while (*d == ' ')
+        d++;
+    for (; *d >= '0' && *d <= '9'; d++)
+        v[0] = v[0] * 10 + (*d - '0');   /* the day */
+    while (*d == ' ')
+        d++;
+    for (i = 0; i < 12; i++)
+        if (d[0] == MON[3 * i] && d[1] == MON[3 * i + 1] && d[2] == MON[3 * i + 2])
+            m = i + 1;
+    if (!m)
+        return 0;
+    d += 3;
+    for (k = 2; k < 6 && *d; k++) {      /* the year, the hours, the minutes, the seconds */
+        while (*d == ' ' || *d == ':')
+            d++;
+        for (; *d >= '0' && *d <= '9'; d++)
+            v[k] = v[k] * 10 + (*d - '0');
+    }
+    if (v[2] < 2024 || v[0] < 1 || v[0] > 31)
+        return 0;
+    return (uint32_t)days_from_civil(v[2], m, v[0]) * 86400u + (uint32_t)(v[3] * 3600 + v[4] * 60 + v[5]);
+}
+
+/* the network's side of a frame: fetch when connected and due; take what came */
+static void net_tick(uint32_t now)
+{
+    int conn = plat_wifi_state() == WIFI_CONNECTED;
+    if (conn && !ui.was_connected)
+        ui.net_try = 0;                  /* just connected: at once */
+    ui.was_connected = conn;
+    if (ui.fetching) {
+        const net_res_t *r;
+        if (net_busy())
+            return;
+        ui.fetching = 0;
+        r = net_result();
+        if (r->press10 >= 0 && r->cloud >= 0) {
+            ui.wx_cloud = (float)r->cloud;
+            ui.wx_press = (float)r->press10 / 10.0f;
+            ui.wx_trend = r->trend10 <= -10 ? -1 : r->trend10 >= 10 ? 1 : 0;   /* a hPa in 3 hours */
+            if (r->kp100 >= 0)
+                ui.wx_kp = (float)r->kp100 / 100.0f;
+            else if (!ui.net_at)
+                ui.wx_kp = sky.kp;
+            ui.net_at = now ? now : 1u;
+        }
+        if (r->utc_s != NET_NONE_S && r->utc_s > -14 * 3600 && r->utc_s < 15 * 3600) {
+            set.utc4 = (int8_t)(r->utc_s / 900);   /* the place's offset now: summer time is in it */
+            set.summer = 0;
+        }
+        {
+            uint32_t u = http_date(r->date);
+            if (u)
+                clock_set(u);
+        }
+        if (!r->done)
+            ui.net_try = now - FETCH_MS + RETRY_MS;   /* nothing came: again soon */
+        return;
+    }
+    if (conn && (!ui.net_try || now - ui.net_try >= FETCH_MS) && net_fetch(set.lat100, set.lon100) == 0) {
+        ui.fetching = 1;
+        ui.net_try = now ? now : 1u;
+    }
+}
+
+/* the minutes since the weather came, for the readings; -1 none (or too old) */
+static int32_t weather_age_min(void)
+{
+    uint32_t now = plat_ms();
+    return ui.net_at && now - ui.net_at < WX_FRESH_MS ? (int32_t)((now - ui.net_at) / 60000u) : -1;
+}
+
 /* ---- text: a line of 28 characters, a source on the left and what it does on the right */
 static char *put(char *d, const char *s)
 {
@@ -585,7 +704,15 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
         line2(lines[9], l, v);
         col[9] = C_MID;
     }
-    copy(lines[10], set.manual ? "EDIT: THE SKY BY HAND" : "HOME: NATURE, RANDOM WEATHER", 32);
+    if (set.manual) {
+        copy(lines[10], "EDIT: THE SKY BY HAND", 32);
+    } else {
+        int32_t age = weather_age_min();
+        if (age >= 0)
+            put(put_int(put(lines[10], "HOME: WEATHER "), age), " MIN AGO");
+        else
+            copy(lines[10], set.offline ? "OFFLINE: RANDOM WEATHER" : "HOME: RANDOM WEATHER (ENV)", 32);
+    }
     col[10] = set.manual ? C_MID : C_LOW;
 }
 
@@ -838,6 +965,181 @@ static void settings_change(int32_t step, int big)
     ui.last_sky = 0;                     /* the sky again, at once */
 }
 
+/* ------------------------------------------------------------------ WiFi (ENV) --- */
+/* a row of the WiFi pages: 14 rows of 16 px, the text left, another right-aligned */
+static void wrow(int i, const char *t, uint16_t c, const char *right, uint16_t rc)
+{
+    cv_begin(240, 16, C_BLACK);
+    cv_text(8, 0, &FONT_S, t, c);
+    if (right && right[0])
+        cv_text(232 - text_w(&FONT_S, right), 0, &FONT_S, right, rc);
+    cv_blit(0, (uint32_t)(8 + i * 16));
+}
+#define RULE "----------------------------"
+
+static void wifi_page(void)
+{
+    char t[40], v[24], *q;
+    int st = plat_wifi_state(), i;
+    int32_t age = weather_age_min();
+    const net_res_t *r = net_result();
+    wrow(0, "WIFI", C_TXT, st >= 0 && st <= WIFI_FAILED ? WIFI_STATE[st] : "?", st == WIFI_CONNECTED ? C_TXT : C_MID);
+    v[0] = 0;
+    if (st == WIFI_CONNECTED)
+        put_int(put(v, "SIG "), plat_wifi_rssi());
+    else if (st == WIFI_FAILED)
+        copy(v, plat_wifi_why(), sizeof v);
+    wrow(1, plat_wifi_ssid()[0] ? plat_wifi_ssid() : "NO NETWORK", C_MID, v, C_LOW);
+    if (ui.fetching)
+        copy(t, "WEATHER: FETCHING...", sizeof t);
+    else if (age >= 0)
+        put(put_int(put(t, "WEATHER: "), age), " MIN AGO");
+    else
+        copy(t, r->why[0] ? r->why : "WEATHER: NOT YET", sizeof t);
+    wrow(2, t, C_MID, 0, 0);
+    wrow(3, RULE, C_LOW, 0, 0);
+    for (i = 0; i < 7; i++) {            /* the networks around, the strongest first */
+        char ssid[33];
+        int rssi = 0, sec = 0, have = plat_wifi_found(i, ssid, &rssi, &sec);
+        t[0] = v[0] = 0;
+        if (have) {
+            q = put(t, i == ui.pick ? "> " : "  ");
+            copy(q, ssid, 21);
+            if (plat_wifi_kept(ssid))
+                put(v, "SAVED");
+            else
+                put(put_int(v, rssi), sec ? " LOCK" : "");
+        } else if (i == 0) {
+            copy(t, st == WIFI_OFF ? "  WIFI IS OFF" : "  LOOKING...", sizeof t);
+        }
+        wrow(4 + i, t, i == ui.pick ? C_TXT : C_MID, v, C_LOW);
+    }
+    wrow(11, RULE, C_LOW, 0, 0);
+    if (plat_ms() < ui.msg_until) {
+        wrow(12, ui.msg[0], C_TXT, ui.msg[1], C_MID);
+        wrow(13, "", C_TXT, 0, 0);
+    } else {
+        wrow(12, "SELECT PICK  SAVE JOIN", C_LOW, 0, 0);
+        wrow(13, set.offline ? "FX LOOK  REC WIFI ON" : "FX LOOK  REC OFF  PLAY NOW", C_LOW, 0, 0);
+    }
+}
+
+static void pass_page(void)
+{
+    char t[48];
+    int k;
+    wrow(0, "PASSWORD FOR", C_MID, 0, 0);
+    wrow(1, ui.ssid, C_TXT, 0, 0);
+    wrow(2, RULE, C_LOW, 0, 0);
+    put(put(t, ui.plen > 24 ? ui.pass + ui.plen - 24 : ui.pass), "_");   /* the end of it, when long */
+    wrow(3, t, C_TXT, 0, 0);
+    put(put_int(t, ui.plen), " CHARACTERS");
+    wrow(4, t, C_LOW, 0, 0);
+    cv_begin(240, 32, C_BLACK);          /* the characters around the one SELECT is on, the middle one big */
+    for (k = -6; k <= 6; k++) {
+        char c[3] = {CHARS[((ui.ch + k) % (int)NCHARS + (int)NCHARS) % (int)NCHARS], 0, 0};
+        int32_t x = 120 + k * 17;
+        if (c[0] == ' ')
+            c[0] = 'S', c[1] = 'P';
+        if (k == 0) {
+            int32_t w = text_w(&FONT_M, c) + 6;
+            cv_rect(x - w / 2, 2, w, 26, C_WHITE);
+            cv_text(x - text_w(&FONT_M, c) / 2, 3, &FONT_M, c, C_BLACK);
+        } else {
+            cv_text(x - text_w(&FONT_S, c) / 2, 8, &FONT_S, c, k == -1 || k == 1 ? C_MID : C_LOW);
+        }
+    }
+    cv_blit(0, 8 + 5 * 16);
+    wrow(7, "", C_TXT, 0, 0);
+    wrow(8, "SELECT CHARACTER", C_MID, 0, 0);
+    wrow(9, "ALGO   abc ABC 123 #+=", C_MID, 0, 0);
+    wrow(10, "PLAY   ADD   HOME DELETE", C_MID, 0, 0);
+    wrow(11, "SAVE   JOIN  SEL BACK", C_MID, 0, 0);
+    wrow(12, RULE, C_LOW, 0, 0);
+    wrow(13, plat_ms() < ui.msg_until ? ui.msg[0] : "", C_TXT, plat_ms() < ui.msg_until ? ui.msg[1] : 0, C_MID);
+}
+
+static void net_join(const char *ssid, const char *pass)
+{
+    if (plat_wifi_join(ssid, pass) == 0) {
+        app_say("JOINING", ssid);
+        ui.screen = 2;
+        lcd_fill(0, 0, 240, 240, C_BLACK);
+    } else {
+        app_say("CAN'T JOIN", ssid);
+    }
+}
+
+/* the WiFi pages' input: 1 = taken */
+static int wifi_page_input(uint32_t down, int32_t es, int32_t ea)
+{
+    if (ui.screen == 2) {
+        if (es) {
+            ui.pick += es > 0 ? 1 : -1;
+            if (ui.pick < 0)
+                ui.pick = 0;
+            while (ui.pick > 0 && !plat_wifi_found(ui.pick, 0, 0, 0))
+                ui.pick--;
+        }
+        if (down >> B_FX & 1u && plat_wifi_scan() != 0)
+            app_say("WIFI IS OFF", "REC TURNS IT ON");
+        if (down >> B_REC & 1u) {
+            set.offline = !set.offline;
+            plat_wifi_on(!set.offline);
+            if (!set.offline)
+                plat_wifi_scan();
+            ui.dirty = 1;
+            app_say("WIFI", set.offline ? "OFF" : "ON");
+        }
+        if (down >> B_PLAY & 1u) {
+            if (plat_wifi_state() != WIFI_CONNECTED)
+                app_say("NOT CONNECTED", "");
+            else
+                ui.net_try = 0;          /* now */
+        }
+        if (down >> B_SAVE & 1u) {
+            int sec = 0;
+            if (plat_wifi_found(ui.pick, ui.ssid, 0, &sec)) {
+                if (!sec || plat_wifi_kept(ui.ssid)) {
+                    net_join(ui.ssid, 0);
+                } else {
+                    ui.screen = 3;
+                    ui.plen = 0;
+                    ui.pass[0] = 0;
+                    lcd_fill(0, 0, 240, 240, C_BLACK);
+                }
+            }
+        }
+        return 1;
+    }
+    if (ui.screen == 3) {
+        ui.ch = (int)(((int32_t)ui.ch + es) % (int32_t)NCHARS + (int32_t)NCHARS) % (int32_t)NCHARS;
+        if (ea) {                        /* to the next (or the previous) group's first */
+            int k, cur = 0;
+            for (k = 0; k < 4; k++)
+                if (ui.ch >= GROUP[k])
+                    cur = k;
+            ui.ch = GROUP[((cur + (ea > 0 ? 1 : -1)) % 4 + 4) % 4];
+        }
+        if ((down >> B_PLAY & 1u) && ui.plen + 1 < (int)sizeof ui.pass) {
+            ui.pass[ui.plen++] = CHARS[ui.ch];
+            ui.pass[ui.plen] = 0;
+        }
+        if ((down >> B_HOME & 1u) && ui.plen > 0)
+            ui.pass[--ui.plen] = 0;
+        if (down >> B_SEL & 1u) {
+            ui.screen = 2;
+            lcd_fill(0, 0, 240, 240, C_BLACK);
+        }
+        if ((down >> B_SAVE & 1u) && ui.plen >= 8)
+            net_join(ui.ssid, ui.pass);
+        else if (down >> B_SAVE & 1u)
+            app_say("TOO SHORT", "WPA2: 8 OR MORE");
+        return 1;
+    }
+    return 0;
+}
+
 /* ------------------------------------------------------------ the arpeggiator --- */
 /* a line sweeps the square left to right in 16 s; each star brighter than magnitude 3 it crosses plays a pluck: its
  * height a degree of the scale now (two octaves, the root two octaves over the drones' at the bottom), its brightness
@@ -895,12 +1197,20 @@ static void lights(void)
     if (ui.screen == 1) {
         db = 1u << B_GLO | 1u << B_HOME;
         bb = 1u << B_GLO;
+    } else if (ui.screen == 2) {
+        db = 1u << B_ENV | 1u << B_SAVE | 1u << B_FX | 1u << B_REC | 1u << B_PLAY;
+        bb = 1u << B_ENV | (set.offline ? 0u : 1u << B_REC);
+    } else if (ui.screen == 3) {
+        db = 1u << B_ENV | 1u << B_SAVE | 1u << B_SEL | 1u << B_PLAY | 1u << B_HOME;
+        bb = 1u << B_ENV;
     } else {
         db = 1u << B_HOME | 1u << B_EDIT | 1u << B_SEL | 1u << B_GLO | 1u << B_LFO | 1u << B_ARP | 1u << B_PLAY
-             | 1u << B_OCTDN | 1u << B_OCTUP;
+             | 1u << B_OCTDN | 1u << B_OCTUP | 1u << B_ENV;
         bb |= set.manual ? 1u << B_EDIT : 1u << B_HOME;
         if (ui.view_sky)
             bb |= 1u << B_LFO;
+        if (weather_age_min() >= 0)
+            bb |= 1u << B_ENV;           /* the weather is the network's */
         if (set.arp)
             bb |= 1u << B_ARP;
         if (sky.planet != PL_NONE)
@@ -928,8 +1238,10 @@ static void lights(void)
 /* ------------------------------------------------------------------- input --- */
 static void to_screen(int sc)
 {
-    if (ui.screen == 1 && ui.dirty)
+    if ((ui.screen == 1 || ui.screen == 2) && sc != ui.screen && ui.dirty) {
         save();
+        ui.net_try = 0;                  /* the place may have changed: the weather again */
+    }
     ui.screen = sc;
     lcd_fill(0, 0, 240, 240, C_BLACK);
 }
@@ -944,8 +1256,18 @@ static void input(void)
     ui.keys = keys;
     if (down || kdown || e1 || e2 || e3 || e4 || ea || ep || es)   /* a new touch (a held button is not one) */
         ui.touched = now;
+    if (down >> B_ENV & 1u) {            /* WiFi, and back */
+        to_screen(ui.screen >= 2 ? 0 : 2);
+        if (ui.screen == 2) {
+            ui.pick = 0;
+            plat_wifi_scan();
+        }
+        return;
+    }
+    if (ui.screen >= 2 && wifi_page_input(down, es, ea))
+        return;
     if (down >> B_GLO & 1u) {            /* the settings, and back */
-        to_screen(!ui.screen);
+        to_screen(ui.screen == 1 ? 0 : 1);
         return;
     }
     if (down >> B_HOME & 1u) {           /* back to nature, the readings */
@@ -1047,6 +1369,8 @@ void app_input_only(void) { input(); }
 void app_ui_init(void)
 {
     lcd_fill(0, 0, 240, 240, C_BLACK);
+    if (!set.offline)
+        plat_wifi_on(1);                 /* it joins the networks kept; the weather follows (net_tick) */
     ui.touched = plat_ms();              /* the readings show at the start */
 }
 
@@ -1058,9 +1382,20 @@ void app_frame(void)
         ui.last_sky = now ? now : 1u;
         sky_update();
     }
-    if (now - ui.last_weather >= 1000u) {   /* the random weather, at its real pace */
-        if (!set.manual)
-            weather_tick((float)(now - ui.last_weather) / 3600000.0f);
+    net_tick(now);
+    if (now - ui.last_weather >= 1000u) {   /* nature's weather: the network's, else random at its real pace */
+        float hours = (float)(now - ui.last_weather) / 3600000.0f;
+        if (!set.manual) {
+            if (ui.net_at && now - ui.net_at < WX_FRESH_MS) {   /* glide to what came, over a few minutes */
+                float k = 1.0f - fm_expf(-hours * 60.0f / 4.0f);
+                sky.clouds += (ui.wx_cloud - sky.clouds) * k;
+                sky.press += (ui.wx_press - sky.press) * k;
+                sky.kp += (ui.wx_kp - sky.kp) * k;
+                sky.trend = ui.wx_trend;
+            } else {
+                weather_tick(hours);
+            }
+        }
         ui.last_weather = now;
     }
     harmony();                           /* the chords move on their own: every frame */
@@ -1080,8 +1415,12 @@ void app_frame(void)
     ui.last_frame = now;
     if (ui.screen == 0)
         sky_frame();
-    else
+    else if (ui.screen == 1)
         settings_frame();
+    else if (ui.screen == 2)
+        wifi_page();
+    else
+        pass_page();
     {
         uint32_t i;
         for (i = 0; i < NSTARS; i++)     /* the played stars fade back */
@@ -1096,4 +1435,14 @@ void app_frame(void)
 #ifdef PLAT_HOST
 uint32_t shim_heap_used = 0;
 const uint32_t shim_heap_size = 278528;
+/* the host simulator has no lwIP (net.c is the device's): the fetch answers at once */
+static net_res_t host_res = {2, 85, 10032, -14, 3600, 233, "Mon, 26 Oct 2026 21:41:02 GMT", ""};
+int net_fetch(int32_t lat100, int32_t lon100)
+{
+    (void)lat100;
+    (void)lon100;
+    return 0;
+}
+int net_busy(void) { return 0; }
+const net_res_t *net_result(void) { return &host_res; }
 #endif

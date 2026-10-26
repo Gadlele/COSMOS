@@ -6,7 +6,7 @@ from others keeps its own licence, which the GPL allows:
 | What | Where | Licence |
 | --- | --- | --- |
 | The FM-1 platform: hardware layer, WiFi, build, web installer | `base/` (a git submodule) | MPL-2.0, see `base/LICENSING.md` |
-| The HTTPS connection (`probe/net.c`), adapted from fm1-radio's `net/radio_net.c` | `probe/net.c` | MPL-2.0 |
+| The HTTPS connection (`probe/net.c`, `cosmos/net.c`), adapted from fm1-radio's `net/radio_net.c` | `probe/net.c`, `cosmos/net.c` | MPL-2.0 |
 | BearSSL, with fm1-radio's yields to WiFi's tasks in `src/ec/ec_p256_m31.c` and `src/inner.h` | `third_party/bearssl/` | MIT (`LICENSE.txt`) |
 | Terminus font | `base/assets/fonts/` | SIL OFL 1.1 |
 | Michroma font (the splash's word) | `third_party/fonts/michroma/` | SIL OFL 1.1 (`OFL.txt`) |

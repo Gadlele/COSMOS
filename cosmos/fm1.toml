@@ -3,11 +3,19 @@ name = "COSMOS"
 id_prefix = "FM-1_72"          # package identity: dev FM-1_7200, releases FM-1_72XXYYZZ
 usb_manufacturer = "COSMOS"
 usb_product = "COSMOS FM-1"
-wifi = true                    # its heap holds the delay and the reverb; the radio stays off until stage 3
+wifi = true                    # the weather every half hour; its heap holds the delay, the reverb, the chorus
 usb_audio_in = false           # the RAM goes to WiFi
 usb_audio_out = false
 words = "words.tsv"
-font_full = ["M"]
+font_full = ["M"]              # FONT_M with lower case: the password's big character shows as typed
+vendored = ["third_party/"]    # BearSSL: the register check skips it (x86 / POWER8 code off)
+# the network code and BearSSL for https, built as the SDK builds code that talks lwIP
+net = ["net.c", "third_party/bearssl/src/**/*.c"]
+net_include = ["third_party/bearssl/inc", "third_party/bearssl/src"]
+# BearSSL on a bare 32-bit chip: no OS randomness or clock (the app seeds it), no x86 / POWER8 code, no unaligned access
+net_cflags = ["-DBR_USE_UNIX_TIME=0", "-DBR_USE_WIN32_TIME=0", "-DBR_USE_URANDOM=0", "-DBR_USE_GETENTROPY=0",
+              "-DBR_USE_WIN32_RAND=0", "-DBR_RDRAND=0", "-DBR_AES_X86NI=0", "-DBR_SSE2=0", "-DBR_POWER8=0",
+              "-DBR_64=0", "-DBR_INT128=0", "-DBR_UMUL128=0", "-DBR_LE_UNALIGNED=0", "-DBR_BE_UNALIGNED=0"]
 o2 = ["dsp/engine.c", "dsp/astro.c"]   # the engine and the sky at -O2
 gen = ["tools/gen_waves.py --out {gen}", "tools/gen_sky.py --out {gen}"]   # the moon's wavetables; the stars, the cities
 # the install site (tools/make_install.py)
