@@ -28,4 +28,10 @@ this week, a geomagnetic storm tears it apart now and then, the clouds and the s
 - Kp index: [NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov)
 - Sun, moon, planets and stars are computed on the FM-1 itself; they work offline.
 
+## Licence
+
+COSMOS's own code is under the [0BSD licence](LICENSE): use it for anything, no conditions. The files it takes
+from fm1-base and fm1-radio stay under their MPL-2.0, and the libraries they bring keep theirs (JieLi's WiFi
+libraries Apache-2.0, BearSSL MIT).
+
 M-VAVE and FM-1 are trademarks of their owners. COSMOS is an independent project.

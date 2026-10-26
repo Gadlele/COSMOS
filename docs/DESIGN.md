@@ -49,7 +49,8 @@ Sun height, not clock time: the sound follows the seasons by itself, and dawn so
 For players who do not want to connect it:
 
 - Sun, moon, stars and planets work as online.
-- Clouds, pressure and Kp become manual, or a simulated weather that drifts by itself (to choose).
+- Clouds, pressure and Kp come from a randomizer: a simulated weather that drifts by itself, at each source's own
+  pace (pressure over days, clouds over hours, a rare geomagnetic storm), so the sound keeps changing as online.
 - The city is picked from a list and kept.
 - The time is set by hand once; the FM-1 keeps counting while it is on.
 - No WiFi means no breath every half hour.
@@ -78,7 +79,8 @@ SKY 100%         UPD 12 MIN
 
 - Left: the reading from the world. Right: what it is doing to the sound.
 - PRESS shows the trend: ↑ rising, ↓ falling, → steady. INTERVAL uses interval names (P5, P8, m3...).
-- To decide: the text appears when a control is touched, then fades and leaves the sky on the whole screen.
+- The text fades in (0.3 s) when a key or knob is touched, holds (2 s after the last touch), then fades out
+  (1.5 s) and leaves the sky on the whole screen. See `docs/img/rome-2026-11-09-fade.gif`.
 
 ### The sky behind the text
 
@@ -99,7 +101,4 @@ See `tools/sky_preview.py` and `docs/img/`.
 
 ## Open questions
 
-- Text always on, or fading to the sky
-- Offline weather: manual knobs or simulated drift
 - Delay length: depends on the free heap with WiFi (MEMORY.md)
-- Licence
