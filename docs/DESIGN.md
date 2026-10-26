@@ -5,7 +5,7 @@
 - **Base:** fm1-base with `wifi = true`. Bluetooth is off (fm1-base cannot run WiFi and Bluetooth together).
 - **Network:** the connection, HTTPS (BearSSL) and download code comes from fm1-radio. The radio itself (Radio
   Garden, MP3/AAC decoders) is left out.
-- **Sound engine:** written from scratch, inspired by Niagara Drift. No code is copied from it (GPL-3.0).
+- **Sound engine:** written from scratch.
 - **UI:** COSMOS's own, including every WiFi screen (network list, password, status, city). fm1-radio's UI is not
   used.
 

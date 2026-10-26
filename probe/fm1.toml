@@ -1,0 +1,21 @@
+# COSMOS PROBE: a test firmware that joins WiFi, fetches COSMOS's data over HTTPS and measures the memory left
+# (base/tools/build.py; ./build.sh probe)
+name = "PROBE"
+id_prefix = "FM-1_71"          # package identity: dev FM-1_7100
+usb_manufacturer = "COSMOS"
+usb_product = "COSMOS PROBE FM-1"
+wifi = true
+usb_audio_in = false           # the RAM goes to WiFi
+usb_audio_out = false
+words = "words.tsv"
+vendored = ["third_party/"]    # BearSSL: the register check skips it (x86 / POWER8 code off)
+# the network code and BearSSL for https, built as the SDK builds code that talks lwIP
+net = ["net.c", "third_party/bearssl/src/**/*.c"]
+net_include = ["third_party/bearssl/inc", "third_party/bearssl/src"]
+# BearSSL on a bare 32-bit chip: no OS randomness or clock (the app seeds it), no x86 / POWER8 code, no unaligned access
+net_cflags = ["-DBR_USE_UNIX_TIME=0", "-DBR_USE_WIN32_TIME=0", "-DBR_USE_URANDOM=0", "-DBR_USE_GETENTROPY=0",
+              "-DBR_USE_WIN32_RAND=0", "-DBR_RDRAND=0", "-DBR_AES_X86NI=0", "-DBR_SSE2=0", "-DBR_POWER8=0",
+              "-DBR_64=0", "-DBR_INT128=0", "-DBR_UMUL128=0", "-DBR_LE_UNALIGNED=0", "-DBR_BE_UNALIGNED=0"]
+# the install site (tools/make_install.py)
+repo = "https://github.com/Gadlele/COSMOS"
+licence = "GPL-3.0-or-later"

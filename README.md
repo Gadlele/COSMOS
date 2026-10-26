@@ -9,18 +9,9 @@ over your location, stars, moon and planets, with the readings in plain white te
 The slower a source changes, the deeper its effect: the moon and the pressure decide what instrument COSMOS is
 this week, a geomagnetic storm tears it apart now and then, the clouds and the sun colour it through the day.
 
-**Status: design.** Nothing to install yet. See [docs/DESIGN.md](docs/DESIGN.md) for the plan and
-[docs/MEMORY.md](docs/MEMORY.md) for the measured memory budget.
-
-## Built on
-
-- [fm1-base](https://github.com/charlesvestal/fm1-base): the FM-1 firmware platform, with WiFi (MPL-2.0)
-- [fm1-radio](https://github.com/charlesvestal/fm1-radio): its network and HTTPS code (MPL-2.0)
-
-## Inspired by
-
-- [Niagara Drift](https://github.com/evanyerburgh/niagara-drift): the idea of two drifting drones. COSMOS
-  shares no code with it; its sound engine is written from scratch.
+**Status: design, and a test firmware.** [Install COSMOS PROBE](https://gadlele.github.io/COSMOS/install/), which
+joins WiFi, fetches COSMOS's data and measures the memory left. See [docs/DESIGN.md](docs/DESIGN.md) for the plan,
+[docs/MEMORY.md](docs/MEMORY.md) for the memory budget and [docs/BUILDING.md](docs/BUILDING.md) to build it.
 
 ## Data
 
@@ -31,8 +22,7 @@ this week, a geomagnetic storm tears it apart now and then, the clouds and the s
 ## Licence
 
 COSMOS is free software under the [GNU General Public License v3.0 or later](LICENSE). You may use, study, change
-and share it; versions you distribute must stay under the GPL, with their source. The files it takes from
-fm1-base and fm1-radio stay under their MPL-2.0, which the GPL allows, and the libraries they bring keep theirs
-(JieLi's WiFi libraries Apache-2.0, BearSSL MIT).
+and share it; versions you distribute must stay under the GPL, with their source. The code it includes from others
+keeps its own licence: see [LICENSING.md](LICENSING.md).
 
 M-VAVE and FM-1 are trademarks of their owners. COSMOS is an independent project.

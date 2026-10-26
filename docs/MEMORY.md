@@ -8,7 +8,7 @@ Measured on 26 Oct 2026 by building with JieLi's Linux toolchain (20260730.1) an
 | --- | --- | --- | --- |
 | fm1-base `examples/wifi` | 417 KB | 122 of 128 KB | 306 of 311 KB |
 | fm1-radio 1.3 | 582 KB (full) | 130 of 128 KB | 309 of 311 KB |
-| Niagara Drift (no WiFi) | 205 KB | 81 of 96 KB | 333 of 344 KB |
+| COSMOS PROBE 0.1 (WiFi, HTTPS, Terminus) | 450 KB | 122 of 128 KB | 306 of 311 KB |
 
 The `.fwsc` packages are all ~610 KB: they are padded to a fixed size and do not tell an app's size.
 
@@ -16,22 +16,23 @@ The `.fwsc` packages are all ~610 KB: they are padded to a fixed size and do not
 
 | Piece | Flash |
 | --- | --- |
-| Niagara Drift's drone engine and effects | ~49 KB |
+| A two-drone engine with filter, reverb and delay (measured on an existing firmware) | ~49 KB |
 | BearSSL in fm1-radio | ~16–20 KB |
 | MP3/AAC decoders in fm1-radio (not needed) | ~47 KB |
-| Barlow fonts in `examples/wifi` (replaced by Terminus) | ~60 KB |
+| Barlow fonts in `examples/wifi` | ~60 KB |
+| Terminus fonts as fm1-base stores them (4 bits a pixel) | ~62 KB: no saving; a 1-bit store would cut it to ~16 KB |
 
 ## COSMOS estimate
 
-Flash free after `examples/wifi`: ~165 KB, ~200 KB with Terminus instead of Barlow. Needed:
+Flash free after `examples/wifi`: ~165 KB; the probe, with HTTPS, leaves ~130 KB. Fonts at 1 bit a pixel would give
+~45 KB more. Needed beyond the probe:
 
 | Part | Flash |
 | --- | --- |
 | Sound engine with ring mod and cross-mod | ~55 KB |
-| HTTPS, download, JSON | ~30 KB |
 | Sky: star catalog and astronomy | ~15 KB |
 | UI, WiFi screens included | ~30 KB |
-| **Total** | **~130 KB: fits** |
+| **Total** | **~100 KB: fits** |
 
 ## RAM: the tight part
 
@@ -45,5 +46,4 @@ heap (`malloc`, 272 KB in all, shared with the WiFi library's buffers and task s
 | Reverb, int16 | ~37 KB |
 | Noise | ~0 |
 
-How much heap is free with WiFi connected can only be measured on the FM-1. Next step: a small test firmware that
-joins WiFi, fetches the data and shows the free heap.
+How much heap is free with WiFi connected can only be measured on the FM-1: COSMOS PROBE (`probe/`) shows it.
