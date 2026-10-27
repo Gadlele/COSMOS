@@ -46,4 +46,11 @@ typedef struct {
 int net_fetch(int32_t lat100, int32_t lon100);   /* 0 = started; -1 = one is running */
 int net_busy(void);
 const net_res_t *net_result(void);
+/* the remote: the phone's filter over MQTT, in a task of its own while on */
+enum { RM_OFF, RM_NO_WIFI, RM_CONNECTING, RM_LIVE, RM_RETRY };
+int net_remote(int on, const char *code);   /* on with the pairing code, or off; 0 = done */
+int net_remote_state(void);              /* RM_* */
+const char *net_remote_why(void);        /* what went wrong last, or "" */
+uint32_t net_remote_get(int32_t *open, int32_t *res);   /* the last message's numbers (0..1000), its age in ms (~0u:
+                                                         * none yet) */
 void cosmos_entropy(uint8_t *p, unsigned n);   /* app.c: for the TLS random generator */

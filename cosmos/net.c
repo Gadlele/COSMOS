@@ -33,6 +33,8 @@ static net_res_t res;
 static volatile int busy;
 static int32_t at_lat100, at_lon100;
 
+#include "remote.c"                              /* the phone's filter, over MQTT */
+
 static void why_to(const char *s)
 {
     unsigned i;
@@ -192,8 +194,15 @@ static int https_get(const char *host, const char *path, char *body, int max)
     struct hostent *he;
     struct sockaddr_in a;
     int n, status = 0, len = 0;
+    while (dns_busy)
+        os_time_dly(1);
+    dns_busy = 1;
     he = gethostbyname(host);
-    if (!he || !he->h_addr_list || !he->h_addr_list[0]) {
+    memset(&a, 0, sizeof a);
+    if (he && he->h_addr_list && he->h_addr_list[0])
+        memcpy(&a.sin_addr, he->h_addr_list[0], 4);
+    dns_busy = 0;
+    if (!a.sin_addr.s_addr) {
         why_to("dns failed");
         return -1;
     }
@@ -202,11 +211,9 @@ static int https_get(const char *host, const char *path, char *body, int max)
         why_to("no socket");
         return -1;
     }
-    memset(&a, 0, sizeof a);
     a.sin_len = sizeof a;
     a.sin_family = AF_INET;
     a.sin_port = htons(443);
-    memcpy(&a.sin_addr, he->h_addr_list[0], 4);
     if (connect(c.sock, (struct sockaddr *)&a, sizeof a) < 0) {
         conn_close(&c);
         why_to("connect failed");

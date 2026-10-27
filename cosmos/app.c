@@ -67,10 +67,12 @@ static struct {                          /* kept in the store (OBJ_SETTINGS) */
     uint8_t arp, offline, stars;         /* the arpeggiator on; WiFi off (0: on, fetching the weather); the star voice:
                                           * 0 the moon's (AUTO), 1..8 one fixed */
     float clouds, press, kp, sun, moon;  /* the sky by hand (EDIT) */
-    uint8_t drone, spare[3];             /* (0.19) the drone's level, 0..20 (twentieths); settings saved before it load
-                                          * without it */
+    uint8_t drone, remote, spare[2];     /* (0.19) the drone's level, 0..20 (twentieths); settings saved before it load
+                                          * without it. (0.20) the phone's filter on (ENV, SEQ) */
+    char code[8];                        /* (0.20) its pairing code: 5 of CODE_CHARS, made when it is first turned on */
 } set;
-#define SET_OLD_SIZE (sizeof set - 4u)   /* the settings before 0.19 */
+#define SET_OLD_SIZE (sizeof set - 12u)  /* the settings before 0.19 */
+#define SET_019_SIZE (sizeof set - 8u)   /* 0.19's */
 
 static sky_t sky = {.sun = 20.0f, .clouds = 30.0f, .press = 1015.0f, .trend = 0, .kp = 1.67f, .moon = 0.4f,
                     .hz = {110.0f, 164.81f}, .linked = 1, .planet = PL_NONE, .on = 1};
@@ -122,6 +124,9 @@ static struct {
     /* the weather from the network */
     uint32_t net_try, net_at;            /* plat_ms of the last fetch asked, of the last that brought the weather (0 none) */
     int fetching, was_connected;
+    int rm_on;                           /* the remote's task asked for (net_remote) */
+    uint32_t rm_try;                     /* when it was last asked for */
+    float rm_open, rm_res;               /* the phone's filter as the engine has it: 0 closed .. 1 open */
     float wx_cloud, wx_press, wx_kp;     /* what it brought: HOME glides there */
     int32_t wx_trend, wx_code;
     int pick;                            /* WiFi: the network picked in the list */
@@ -355,6 +360,8 @@ static void defaults(void)
     set.sun = 20.0f;
     set.moon = 0.4f;
     set.drone = 20;
+    set.remote = 0;
+    set.code[0] = 0;
 }
 static void save(void)
 {
@@ -375,7 +382,11 @@ void app_init(void)
     int n = plat_store_load(OBJ_SETTINGS, &set, sizeof set);
     if (n == (int)SET_OLD_SIZE)          /* saved by 0.18 or before: the drone at its full level */
         set.drone = 20;
-    if ((n != (int)sizeof set && n != (int)SET_OLD_SIZE) || set.magic != SET_MAGIC
+    if (n == (int)SET_OLD_SIZE || n == (int)SET_019_SIZE) {   /* before 0.20: no remote */
+        set.remote = 0;
+        set.code[0] = 0;
+    }
+    if ((n != (int)sizeof set && n != (int)SET_OLD_SIZE && n != (int)SET_019_SIZE) || set.magic != SET_MAGIC
         || set.lat100 < -9000 || set.lat100 > 9000 || set.lon100 < -18000 || set.lon100 > 18000 || set.octave < 1
         || set.octave > 4 || set.pc[0] > 11 || set.pc[1] > 11 || set.tuning > 2 || set.drone > 20)
         defaults();
@@ -685,6 +696,52 @@ static void net_tick(uint32_t now)
         ui.fetching = 1;
         ui.net_try = now ? now : 1u;
     }
+}
+
+/* ---- the remote: the phone's filter (net.c's remote.c), while ENV's SEQ has it on and WiFi is */
+#define RM_HOLD_MS 10000u                /* the phone silent this long: the filter opens again, slowly */
+static const char CODE_CHARS[] = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";   /* none to mistake for another */
+static int code_ok(void)
+{
+    int i, k;
+    for (i = 0; i < 5; i++) {
+        for (k = 0; CODE_CHARS[k] && CODE_CHARS[k] != set.code[i]; k++)
+            ;
+        if (!set.code[i] || !CODE_CHARS[k])
+            return 0;
+    }
+    return set.code[5] == 0;
+}
+static void code_new(void)
+{
+    uint8_t r[5];
+    int i;
+    cosmos_entropy(r, sizeof r);
+    for (i = 0; i < 5; i++)
+        set.code[i] = CODE_CHARS[r[i] % (sizeof CODE_CHARS - 1u)];
+    set.code[5] = 0;
+}
+static void remote_tick(uint32_t now)
+{
+    int want = set.remote && !set.offline && code_ok();
+    int32_t o = 1000, r = 0;
+    uint32_t age;
+    if (want != ui.rm_on && (!want || !ui.rm_try || now - ui.rm_try > 5000u)) {
+        ui.rm_try = now ? now : 1u;
+        if (net_remote(want, set.code) == 0)
+            ui.rm_on = want;
+    }
+    age = net_remote_get(&o, &r);
+    if (ui.rm_on && age < RM_HOLD_MS) {  /* the phone's, as it comes (the engine glides) */
+        ui.rm_open = (float)o / 1000.0f;
+        ui.rm_res = (float)r / 1000.0f;
+    } else {                             /* open again over ~2 s */
+        ui.rm_open += (1.0f - ui.rm_open) * 0.05f;
+        ui.rm_res -= ui.rm_res * 0.05f;
+        if (ui.rm_open > 0.9995f)
+            ui.rm_open = 1.0f;
+    }
+    eng_remote(ui.rm_open, ui.rm_res);
 }
 
 /* the minutes since the weather came, for the readings; -1 none (or too old) */
@@ -1170,7 +1227,7 @@ static void wifi_page(void)
         copy(t, r->why[0] ? r->why : "WEATHER: NOT YET", sizeof t);
     wrow(2, t, C_MID, 0, 0);
     wrow(3, RULE, C_LOW, 0, 0);
-    for (i = 0; i < 7; i++) {            /* the networks around, the strongest first */
+    for (i = 0; i < 5; i++) {            /* the networks around, the strongest first */
         char ssid[33];
         int rssi = 0, sec = 0, have = plat_wifi_found(i, ssid, &rssi, &sec);
         t[0] = v[0] = 0;
@@ -1186,7 +1243,32 @@ static void wifi_page(void)
         }
         wrow(4 + i, t, i == ui.pick ? C_TXT : C_MID, v, C_LOW);
     }
-    wrow(11, RULE, C_LOW, 0, 0);
+    wrow(9, RULE, C_LOW, 0, 0);
+    {   /* the remote: the phone's filter */
+        int rs = net_remote_state();
+        uint16_t c = C_MID;
+        int32_t o = 0;
+        uint32_t age = net_remote_get(&o, 0);
+        if (!set.remote)
+            copy(v, "OFF", sizeof v);
+        else if (set.offline)
+            copy(v, "NEEDS WIFI", sizeof v);
+        else if (rs == RM_LIVE && ui.rm_on && age < RM_HOLD_MS) {
+            put(put_int(put(v, "FILTER "), (o + 5) / 10), "%");
+            c = C_TXT;
+        } else if (rs == RM_LIVE)
+            copy(v, "READY", sizeof v), c = C_TXT;
+        else if (rs == RM_RETRY && net_remote_why()[0])
+            copy(v, net_remote_why(), sizeof v);
+        else
+            copy(v, rs == RM_NO_WIFI ? "WAITING FOR WIFI" : "CONNECTING", sizeof v);
+        wrow(10, "PHONE REMOTE", C_MID, v, c);
+        if (set.remote && code_ok())
+            put(put(t, "CODE "), set.code);
+        else
+            t[0] = 0;
+        wrow(11, t, C_TXT, set.remote ? "SEQ OFF" : "SEQ ON", C_LOW);
+    }
     if (plat_ms() < ui.msg_until) {
         wrow(12, ui.msg[0], C_TXT, ui.msg[1], C_MID);
         wrow(13, "", C_TXT, 0, 0);
@@ -1250,8 +1332,17 @@ static int wifi_page_input(uint32_t down, int32_t es, int32_t ea)
             ui.pick += es > 0 ? 1 : -1;
             if (ui.pick < 0)
                 ui.pick = 0;
+            if (ui.pick > 4)
+                ui.pick = 4;
             while (ui.pick > 0 && !plat_wifi_found(ui.pick, 0, 0, 0))
                 ui.pick--;
+        }
+        if (down >> B_SEQ & 1u) {        /* the phone's filter, on and off */
+            set.remote = !set.remote;
+            if (set.remote && !code_ok())
+                code_new();
+            ui.dirty = 1;
+            app_say("PHONE REMOTE", set.remote ? set.code : "OFF");
         }
         if (down >> B_FX & 1u && plat_wifi_scan() != 0)
             app_say("WIFI IS OFF", "REC TURNS IT ON");
@@ -1409,8 +1500,8 @@ static void lights(void)
         db = 1u << B_GLO | 1u << B_HOME;
         bb = 1u << B_GLO;
     } else if (ui.screen == 2) {
-        db = 1u << B_ENV | 1u << B_SAVE | 1u << B_FX | 1u << B_REC | 1u << B_PLAY;
-        bb = 1u << B_ENV | (set.offline ? 0u : 1u << B_REC);
+        db = 1u << B_ENV | 1u << B_SAVE | 1u << B_FX | 1u << B_REC | 1u << B_PLAY | 1u << B_SEQ;
+        bb = 1u << B_ENV | (set.offline ? 0u : 1u << B_REC) | (set.remote ? 1u << B_SEQ : 0u);
     } else if (ui.screen == 3) {
         db = 1u << B_ENV | 1u << B_SAVE | 1u << B_SEL | 1u << B_PLAY | 1u << B_HOME;
         bb = 1u << B_ENV;
@@ -1622,6 +1713,7 @@ void app_frame(void)
         sky_update();
     }
     net_tick(now);
+    remote_tick(now);
     if (now - ui.last_weather >= 1000u) {   /* nature's weather: the network's, else random at its real pace */
         float hours = (float)(now - ui.last_weather) / 3600000.0f;
         if (ui.net_at && now - ui.net_at < WX_FRESH_MS) {   /* glide to what came, over a few minutes */
@@ -1700,4 +1792,29 @@ int net_fetch(int32_t lat100, int32_t lon100)
 }
 int net_busy(void) { return 0; }
 const net_res_t *net_result(void) { return &host_res; }
+/* the remote: on the computer a phone that sweeps the filter shut and open every 8 s (and resonant); in the browser
+ * none */
+static int host_rm;
+int net_remote(int on, const char *code)
+{
+    (void)code;
+    host_rm = on;
+    return 0;
+}
+int net_remote_state(void) { return host_rm ? RM_LIVE : RM_OFF; }
+const char *net_remote_why(void) { return ""; }
+uint32_t net_remote_get(int32_t *open, int32_t *res)
+{
+#ifdef PLAT_WEB
+    (void)open, (void)res;
+    return ~0u;
+#else
+    uint32_t t = plat_ms() % 8000u;
+    if (open)
+        *open = (int32_t)(t < 4000u ? 1000u - t / 4u : (t - 4000u) / 4u);
+    if (res)
+        *res = 600;
+    return host_rm ? 0u : ~0u;
+#endif
+}
 #endif

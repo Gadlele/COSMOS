@@ -316,6 +316,17 @@ static inline float drone_tick(drone_t *d, float idx, float ol, uint32_t pm, flo
 #include "pads.c"
 #include "stars.c"
 
+/* the phone's filter (the remote): a lowpass over everything, the reverb's tail with it. eng_remote sets where it
+ * is (0 closed, 1 open: out of the way), each block glides there in ~40 ms; open, it costs nothing */
+static volatile float rm_to = 1.0f, rm_q;
+static float rm_at = 1.0f, rm_k = 1.4f, rm_a[3], rm_s[2][2];
+void eng_remote(float open, float res)
+{
+    rm_to = fm_clampf(open, 0.0f, 1.0f);
+    rm_q = fm_clampf(res, 0.0f, 1.0f);
+}
+float eng_remote_at(void) { return rm_at; }
+
 void eng_render(int32_t *lr, uint32_t n, float gain)
 {
     uint32_t i;
@@ -385,6 +396,12 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
     to0 = target_don[0] ? 1.0f : 0.0f;  /* the drone fades in over ~0.6 s, out over ~0.3 s */
     k0 = to0 > e.gate[0] ? 0.00004f : 0.00008f;
     gain *= 8300000.0f * 0.3f;
+    rm_at += (rm_to - rm_at) * 0.14f;
+    rm_k += (1.4f - 1.25f * rm_q - rm_k) * 0.14f;   /* the resonance: from gentle to singing */
+    if (rm_at < 0.999f)                  /* 120 Hz .. 16 kHz, evenly in octaves */
+        svf_set(rm_a, 120.0f * fm_exp2f(7.06f * rm_at), rm_k);
+    else
+        rm_s[0][0] = rm_s[0][1] = rm_s[1][0] = rm_s[1][1] = 0.0f;
     for (i = 0; i < n; i++) {
         float white, nzA, a, l, r, ro, dL, dR, rin, o[4], y[4], outL, outR, pos, fr;
         uint32_t j, ri, rj;
@@ -488,6 +505,10 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
         outR += (o[1] + o[3]) * verb;
         outL = outL / (1.0f + fm_fabsf(outL) * 0.4f);
         outR = outR / (1.0f + fm_fabsf(outR) * 0.4f);
+        if (rm_at < 0.999f) {            /* the remote's lowpass */
+            outL = svf(rm_s[0], rm_a, outL, 0);
+            outR = svf(rm_s[1], rm_a, outR, 0);
+        }
         lr[2u * i] = (int32_t)(outL * gain);
         lr[2u * i + 1u] = (int32_t)(outR * gain);
     }

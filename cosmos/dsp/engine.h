@@ -67,6 +67,8 @@ float tension(const sky_t *s);                /* the pressure's tension: -1.4 hi
 int eng_init(void);                      /* the delay's and the reverb's lines, from the heap: 0 = done */
 void eng_sky(const sky_t *s);            /* main loop: where the sky is now */
 void eng_render(int32_t *lr, uint32_t n, float gain);   /* audio interrupt: n stereo frames, 24-bit; gain 0..1 */
+void eng_remote(float open, float res);   /* the phone's filter: 0 closed .. 1 open (out of the way), its resonance 0..1 */
+float eng_remote_at(void);               /* where it is now */
 uint32_t eng_bytes(void);                /* what eng_init took from the heap */
 void eng_note(float hz, float amp, float pan, int32_t voice, uint32_t delay_ms);   /* main loop: a star's note, at
                                          * pan -1..1, in a voice (-1: the moon's), after delay_ms (dropped if 16 wait) */
