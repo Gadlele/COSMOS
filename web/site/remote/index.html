@@ -1,0 +1,236 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later — COSMOS's phone remote: the phone's tilt opens and closes the FM-1's
+     filter, over the internet (MQTT over WebSocket to a public broker; the FM-1 listens there: the TILT test firmware, tilt/) -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>COSMOS Remote</title>
+<meta name="description" content="Tilt the phone to open and close COSMOS's filter on the FM-1, over the internet.">
+<meta name="theme-color" content="#06080e">
+<link rel="icon" href="../img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+:root { --bg: #06080e; --panel: #0e121d; --rule: #1f2638; --text: #e9ecf5; --mid: #8f96ad; --accent: #cfd8ff; --on-accent: #0a0d18;
+        --glow: rgba(207, 216, 255, .14); --storm: #ffb38a; --live: #9fe6b8;
+        --body: 'IBM Plex Sans', system-ui, sans-serif; --display: DotGothic16, 'IBM Plex Mono', monospace;
+        --mono: 'IBM Plex Mono', ui-monospace, monospace; color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { background: var(--bg); }
+body { margin: 0; color: var(--text); font: 16px/1.5 var(--body); min-height: 100dvh; display: flex; flex-direction: column;
+       -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+.wrap { width: 100%; max-width: 480px; margin: 0 auto; padding: 16px 16px max(16px, env(safe-area-inset-bottom)); flex: 1;
+        display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+header a { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none;
+           font: 400 18px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; }
+header img { width: 26px; height: 26px; image-rendering: pixelated; }
+.state { font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--mid);
+         display: flex; align-items: center; gap: 8px; }
+.state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--rule); }
+.state.live { color: var(--live); } .state.live::before { background: var(--live); box-shadow: 0 0 10px var(--live); }
+.state.wait::before { background: var(--accent); }
+.state.err { color: var(--storm); } .state.err::before { background: var(--storm); }
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 16px; padding: 18px; }
+label.k { display: block; font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--mid); margin: 0 0 10px; }
+.code { display: flex; gap: 10px; }
+.code input { flex: 1; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--rule); border-radius: 12px;
+              padding: 12px 14px; font: 400 26px/1 var(--display); letter-spacing: .3em; text-transform: uppercase; }
+.code input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; padding: 0 20px; border-radius: 12px; border: 0;
+       font: 600 16px/1 var(--body); min-height: 52px; cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--on-accent); box-shadow: 0 0 28px var(--glow); }
+.btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--rule); }
+.hint { margin: 10px 0 0; font-size: 14px; color: var(--mid); }
+.hint b { color: var(--text); font-weight: 600; }
+.pad { position: relative; flex: 1; min-height: 300px; border-radius: 20px; border: 1px solid var(--rule); overflow: hidden;
+       background: #000; touch-action: none; }
+.pad .fill { position: absolute; inset: auto 0 0 0; height: 100%;
+             background: linear-gradient(180deg, rgba(207,216,255,.55) 0%, rgba(58,63,106,.55) 40%, rgba(20,26,51,.4) 100%);
+             box-shadow: 0 -1px 0 var(--accent), 0 -10px 40px var(--glow); transition: height .06s linear; }
+.pad .read { position: absolute; left: 18px; top: 16px; font: 400 54px/1 var(--display); letter-spacing: .04em; }
+.pad .read small { display: block; margin-top: 8px; font: 600 12px/1 var(--mono); letter-spacing: .12em; color: var(--mid); text-transform: uppercase; }
+.pad .res { position: absolute; right: 18px; top: 18px; text-align: right; font: 600 12px/1.6 var(--mono); letter-spacing: .1em;
+            color: var(--mid); text-transform: uppercase; }
+.pad .res b { display: block; font: 400 26px/1 var(--display); color: var(--text); }
+.pad .how { position: absolute; left: 18px; right: 18px; bottom: 16px; font-size: 14px; color: var(--mid); }
+.row { display: flex; gap: 10px; }
+.row .btn { flex: 1; }
+.btn[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+footer { font: 12px/1.5 var(--mono); color: var(--mid); text-align: center; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a href="../"><img src="../img/icon.png" alt="">COSMOS</a>
+    <span id="state" class="state">offline</span>
+  </header>
+
+  <section id="pair" class="card">
+    <label class="k" for="code">Pairing code</label>
+    <div class="code">
+      <input id="code" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="•••••" inputmode="text">
+      <button id="go" class="btn primary">Connect</button>
+    </div>
+    <p class="hint">The code is on the FM-1's screen, under <b>REMOTE</b> (the <b>TILT</b> test firmware). The FM-1 needs WiFi.</p>
+  </section>
+
+  <div id="play" class="pad" hidden>
+    <div class="fill" id="fill"></div>
+    <div class="read"><span id="pct">100</span>%<small>Filter</small></div>
+    <div class="res">Resonance<b id="res">0</b></div>
+    <div class="how" id="how">Raise the phone to open the filter, lay it flat to close it; tilt it sideways for resonance. Or drag here.</div>
+  </div>
+
+  <div class="row" id="ctl" hidden>
+    <button id="gyro" class="btn ghost" aria-pressed="false">Tilt</button>
+    <button id="open" class="btn ghost">Open</button>
+    <button id="stop" class="btn ghost">Disconnect</button>
+  </div>
+
+  <footer>The filter goes back to the FM-1's knob 10 s after the phone goes quiet.</footer>
+</div>
+
+<script>
+'use strict';
+// The broker: HiveMQ's public one (the FM-1 uses its plain MQTT port; here its WebSocket). ?broker=ws://... for tests.
+const qs = new URLSearchParams(location.search);
+const BROKER = qs.get('broker') || 'wss://broker.hivemq.com:8884/mqtt';
+const CODE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$/;
+const $ = id => document.getElementById(id);
+const enc = new TextEncoder();
+
+// ---- a small MQTT 3.1.1 client: CONNECT, PUBLISH at QoS 0, PINGREQ (all this page needs)
+function mqttStr(s) { const b = enc.encode(s); return [b.length >> 8, b.length & 255, ...b]; }
+function mqttPacket(type, body) {
+  const len = []; let n = body.length;
+  do { let d = n & 127; n >>= 7; if (n) d |= 128; len.push(d); } while (n);
+  return new Uint8Array([type, ...len, ...body]);
+}
+class Mqtt {
+  constructor(url, id, onstate) { this.url = url; this.id = id; this.onstate = onstate; this.ok = false; this.closed = false; this.open(); }
+  open() {
+    this.onstate('wait', 'connecting');
+    const ws = this.ws = new WebSocket(this.url, 'mqtt');
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => ws.send(mqttPacket(0x10, [...mqttStr('MQTT'), 4, 0x02, 0, 30, ...mqttStr(this.id)]));
+    ws.onmessage = ev => {
+      const b = new Uint8Array(ev.data);
+      if (b[0] >> 4 === 2) {
+        if (b[3] === 0) { this.ok = true; this.onstate('live', 'connected'); }
+        else this.onstate('err', 'refused');
+      }
+    };
+    ws.onclose = () => {
+      this.ok = false; clearInterval(this.ping);
+      if (this.closed) return this.onstate('', 'offline');
+      this.onstate('err', 'reconnecting');
+      this.retry = setTimeout(() => this.open(), 2000);
+    };
+    clearInterval(this.ping);
+    this.ping = setInterval(() => { if (this.ok) ws.send(new Uint8Array([0xC0, 0])); }, 15000);
+  }
+  publish(topic, msg) {
+    if (!this.ok || this.ws.bufferedAmount > 1024) return false;
+    this.ws.send(mqttPacket(0x30, [...mqttStr(topic), ...enc.encode(msg)]));
+    return true;
+  }
+  close() {
+    this.closed = true; clearTimeout(this.retry); clearInterval(this.ping);
+    if (this.ok) this.ws.send(new Uint8Array([0xE0, 0]));
+    try { this.ws.close(); } catch (e) {}
+  }
+}
+
+// ---- the filter: 0..1000 open, 0..1000 resonance; sent when it changes (20 a second at most) and every 3 s
+let mq = null, topic = '', open = 1000, res = 0, sentAt = 0, sentOpen = -1, sentRes = -1, useGyro = false, dragging = false, wakeLock = null;
+
+function setState(cls, text) { const s = $('state'); s.className = 'state ' + cls; s.textContent = text; }
+function show() {
+  $('pct').textContent = Math.round(open / 10);
+  $('res').textContent = Math.round(res / 10);
+  $('fill').style.height = (open / 10) + '%';
+}
+function send(force) {
+  const now = performance.now();
+  if (!mq || (!force && now - sentAt < 50)) return;
+  if (!force && Math.abs(open - sentOpen) < 3 && Math.abs(res - sentRes) < 3 && now - sentAt < 3000) return;
+  if (mq.publish(topic, open + ' ' + res)) { sentAt = now; sentOpen = open; sentRes = res; }
+}
+setInterval(() => send(false), 60);
+
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+function onTilt(e) {
+  if (!useGyro || dragging || e.beta == null) return;
+  // flat on its back (beta 0) closed; upright (beta 80) open; sideways (gamma ±50) resonant
+  open = Math.round(1000 * clamp((e.beta - 5) / 75, 0, 1));
+  res = Math.round(1000 * clamp(Math.abs(e.gamma || 0) / 50, 0, 1));
+  show(); send(false);
+}
+async function gyroOn() {
+  if (typeof DeviceOrientationEvent === 'undefined') { $('how').textContent = 'This browser has no tilt sensor: drag here instead.'; return false; }
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {   // iPhone: asked for, on a tap
+    try { if (await DeviceOrientationEvent.requestPermission() !== 'granted') throw 0; }
+    catch (e) { $('how').textContent = 'Motion access was refused (Safari: Settings > Safari > Motion & Orientation). Drag here instead.'; return false; }
+  }
+  window.addEventListener('deviceorientation', onTilt);
+  return true;
+}
+async function setGyro(on) {
+  if (on && !(await gyroOn())) on = false;
+  useGyro = on;
+  $('gyro').setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
+// dragging on the pad: up opens, sideways from the middle adds resonance
+const pad = $('play');
+function drag(e) {
+  const r = pad.getBoundingClientRect();
+  open = Math.round(1000 * clamp(1 - (e.clientY - r.top) / r.height, 0, 1));
+  res = Math.round(1000 * clamp(Math.abs((e.clientX - r.left) / r.width - 0.5) * 2.4 - 0.2, 0, 1));
+  show(); send(false);
+}
+pad.addEventListener('pointerdown', e => { dragging = true; pad.setPointerCapture(e.pointerId); drag(e); });
+pad.addEventListener('pointermove', e => { if (dragging) drag(e); });
+pad.addEventListener('pointerup', () => { dragging = false; });
+pad.addEventListener('pointercancel', () => { dragging = false; });
+
+async function connect() {
+  const code = $('code').value.trim().toUpperCase();
+  if (!CODE_RE.test(code)) { setState('err', 'check the code'); $('code').focus(); return; }
+  try { localStorage.setItem('cosmos-remote-code', code); } catch (e) {}
+  topic = 'cosmos-fm1/' + code;
+  mq = new Mqtt(BROKER, 'cosmos-phone-' + Math.random().toString(36).slice(2, 10), setState);
+  $('pair').hidden = true; $('play').hidden = false; $('ctl').hidden = false;
+  show();
+  await setGyro(true);                                   // on the tap that connected: iPhone asks for it here
+  keepAwake();
+}
+async function keepAwake() {                           // the screen stays on while connected
+  try { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } catch (e) {}
+}
+function disconnect() {
+  if (mq) { open = 1000; res = 0; send(true); setTimeout(() => { mq && mq.close(); mq = null; }, 150); }
+  setGyro(false);
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  $('pair').hidden = false; $('play').hidden = true; $('ctl').hidden = true;
+}
+
+$('go').addEventListener('click', connect);
+$('code').addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
+$('code').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+$('gyro').addEventListener('click', () => setGyro(!useGyro));
+$('open').addEventListener('click', () => { open = 1000; res = 0; show(); send(true); });
+$('stop').addEventListener('click', disconnect);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && mq && !wakeLock) keepAwake(); });
+
+let saved = qs.get('c') || '';
+try { saved = saved || localStorage.getItem('cosmos-remote-code') || ''; } catch (e) {}
+$('code').value = saved.toUpperCase();
+</script>
+</body>
+</html>

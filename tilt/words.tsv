@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# TILT's words for a screen reader (fm1-reader): the text on the screen <TAB> what to say.
+# url: https://gadlele.github.io/COSMOS/tilt/words/
+TILT	tilt

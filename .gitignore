@@ -7,3 +7,4 @@ cosmos/web/*
 !cosmos/web/installer.html
 !cosmos/web/installer_hook.js
 !cosmos/web/emu/
+tilt/web/

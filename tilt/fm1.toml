@@ -1,0 +1,18 @@
+# TILT: a test firmware for the phone remote: one plain synth voice, its filter moved by the phone's tilt over MQTT
+# (base/tools/build.py; ./build.sh tilt)
+name = "TILT"
+id_prefix = "FM-1_73"          # package identity: dev FM-1_7300
+usb_manufacturer = "COSMOS"
+usb_product = "COSMOS TILT FM-1"
+wifi = true
+usb_audio_in = false           # the RAM goes to WiFi
+usb_audio_out = false
+words = "words.tsv"
+font_full = ["M"]              # FONT_M with lower case: the password's big character shows as typed
+
+# the network code: MQTT on lwIP's sockets, built as the SDK builds code that talks lwIP
+net = ["net.c"]
+
+# the install site (tools/make_install.py)
+repo = "https://github.com/Gadlele/COSMOS"
+licence = "GPL-3.0-or-later"
