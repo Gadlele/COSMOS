@@ -35,7 +35,11 @@ chord. The settings' PAD can fix one (`cosmos/dsp/pads.c`).
 | Thunderstorm | SUPERNOVA: brass, saws bending in, a filter swelling over 3.5 s | GRAVITY: saws falling into each chord, a wobbling low-pass, driven, a sub |
 
 **2. The star voice: the moon.** What the star sequencer plays changes with the phase, one each eighth of the
-cycle; the settings' STARS can fix one (`cosmos/dsp/stars.c`).
+cycle; the settings' STARS can fix one, or choose PAD: each pad's own voice, the stars playing with the
+instrument (`cosmos/dsp/stars.c`). PAD's voices: NEBULA drops, AURORA a bell (FM 2:1), RINGS a struck string,
+SOLAR WIND a whistle (noise in a narrow band), GRAVITY a low bell, QUASAR a burst of grains, ORGAN the flute,
+VOYAGER a bell over a low shadow, TAPE the music box, HORIZON a bell played backwards, BACKGROUND a glint, DEEP
+FIELD a bongo (a low-pass gate), CRYSTAL glass, SUPERNOVA a bell of pulses, STRINGS a synth pluck.
 
 | Moon | Voice |
 | --- | --- |

@@ -13,11 +13,22 @@
  * and the rhythms' own:
  *   PULSE     (PULSAR, Kp 5 and up) an analog pluck, held to the pad's sixteenths; the pad gated, a beat under it
  *   SEQ       (STARGATE, Kp 4) a resonant analog voice, its filter snapping, a sixteenth each (the app's clock)
+ * and each pad's own (STARS: PAD), from the sound lab's proposals:
+ *   NEBULA DROPS, AURORA a bell (FM 2:1), RINGS a struck string (three modes), SOLAR WIND a whistle (noise in a
+ *   narrow band), GRAVITY a low bell (FM 1.414), QUASAR a burst of grains, ORGAN FLUTE, VOYAGER a bell over a low
+ *   shadow (FM 4:1), TAPE MUSIC BOX, HORIZON a bell backwards (swelling to its strike), BACKGROUND a glint (a sine
+ *   fading in and out), DEEP FIELD a bongo (folded sines in a low-pass gate), CRYSTAL GLASS, SUPERNOVA a bell of
+ *   pulses (a closing low-pass), STRINGS a synth pluck (a narrow pulse)
  * A voice is placed in the stereo where its star is on the screen. */
 
-static const char *const VOICE_NAME[NVOICE] = {"DROPS", "KALIMBA", "HARP", "CELESTA", "CHIMES", "GLASS",
-                                               "MUSIC BOX", "FLUTE"};
-const char *voice_name(int32_t k) { return k >= 0 && k < NVOICE ? VOICE_NAME[k] : ""; }
+static const char *const VOICE_NAME[V_N] = {"DROPS", "KALIMBA", "HARP", "CELESTA", "CHIMES", "GLASS", "MUSIC BOX",
+                                            "FLUTE", "PULSE", "SEQ", "AURORA BELL", "STRING", "WHISTLE", "LOW BELL",
+                                            "GRAINS", "CHOIR BELL", "REVERSE BELL", "GLINT", "BONGO", "NOVA BELL",
+                                            "SYNTH"};
+const char *voice_name(int32_t k) { return k >= 0 && k < V_N ? VOICE_NAME[k] : ""; }
+static const int8_t PAD_VOICE[ENG_N] = {V_DROPS, V_ABELL, V_STRING, V_WHISTLE, V_GBELL, V_GRAINS, V_FLUTE, V_VBELL,
+                                        V_MUSICBOX, V_RBELL, V_GLINT, V_BONGO, V_GLASS, V_NBELL, V_SYNTH};
+int32_t pad_voice(int32_t pad) { return pad >= 0 && pad < ENG_N ? PAD_VOICE[pad] : V_DROPS; }
 
 #define NS 12                            /* star voices at once */
 #define KS_N 256u                        /* a harp string's line: notes from 175 Hz (lower ones an octave up) */
@@ -26,7 +37,8 @@ typedef struct {
     uint32_t ph[3], inc[3];
     float t, amp, pan;                   /* samples since its start, its level, its place */
     float s[2][2], a[3];                 /* a resonator (KALIMBA's box) or a filter (PULSE, SEQ) */
-    float ks_lp, ks_len;                 /* HARP: the loop's low-pass, the string's length in samples */
+    float ks_lp, ks_len;                 /* HARP: the loop's low-pass, the string's length in samples; the bells: the
+                                          * FM index, the low shadow's level; REVERSE BELL: its strike (samples) */
     float d[4], k[4];                    /* its envelopes now and their decay a sample: partials, the FM index */
     float life;                          /* samples until it is let go */
     float vel;
@@ -117,6 +129,7 @@ static void star_start(float hz, float amp, float pan, int32_t type, int32_t wai
     v->pan = fm_clampf(pan, -1.0f, 1.0f);
     v->ph[0] = v->ph[1] = v->ph[2] = 0u;
     v->s[0][0] = v->s[0][1] = v->s[1][0] = v->s[1][1] = 0.0f;
+    v->ks_len = 0.0f;
     switch (type) {
     case V_KALIMBA:                      /* an octave down: a tine is low */
         hz *= 0.5f;
@@ -188,6 +201,71 @@ static void star_start(float hz, float amp, float pan, int32_t type, int32_t wai
         v->inc[2] = (uint32_t)(hz * 0.5f * TO32);
         envs(v, 0.12f, 1.0f, 1.0f, 1.0f, 0.6f);
         break;
+    case V_ABELL:                        /* the bells: FM, ratio and index, their decays; VOYAGER's a low shadow */
+        v->inc[1] = (uint32_t)(hz * 2.0f * TO32);
+        v->ks_lp = 1.2f;
+        envs(v, 1.8f, 1.0f, 1.0f, 0.3f, 5.0f);
+        goto bell;
+    case V_GBELL:                        /* an octave down */
+        hz *= 0.5f;
+        v->inc[1] = (uint32_t)(hz * 1.414f * TO32);
+        v->ks_lp = 2.0f;
+        envs(v, 2.0f, 1.0f, 1.0f, 0.4f, 5.5f);
+        goto bell;
+    case V_VBELL:
+        v->inc[1] = (uint32_t)(hz * 4.0f * TO32);
+        v->ks_lp = 1.5f;
+        v->ks_len = 0.3f;
+        envs(v, 1.2f, 0.8f, 1.0f, 0.2f, 4.0f);
+    bell:
+        v->inc[0] = (uint32_t)(hz * TO32);
+        v->inc[2] = (uint32_t)(hz * 0.5f * TO32);
+        break;
+    case V_STRING:                       /* three modes, a little sharp of the harmonics, and a pluck of noise */
+        v->inc[0] = (uint32_t)(hz * TO32);
+        v->inc[1] = (uint32_t)(hz * 2.01f * TO32);
+        v->inc[2] = (uint32_t)(hz * 3.02f * TO32);
+        envs(v, 0.9f, 0.35f, 0.12f, 0.004f, 3.5f);
+        break;
+    case V_WHISTLE:                      /* noise in a narrow band an octave up: 0.15 s in, 0.2 held, 0.8 out */
+        svf_set(v->a, hz * 2.0f, 1.0f / 90.0f);
+        envs(v, 1.0f, 1.0f, 1.0f, 1.0f, 1.15f);
+        break;
+    case V_GRAINS:                       /* two grains at a time, a new one every 17 ms for a quarter second */
+        v->inc[2] = (uint32_t)(hz * TO32);
+        v->inc[0] = v->inc[1] = v->inc[2];
+        envs(v, 1.0f, 1.0f, 1.0f, 1.0f, 0.3f);
+        break;
+    case V_RBELL: {                      /* a bell backwards: its envelopes grow towards the strike, 1.2 s on */
+        float L = 1.2f * SR;
+        v->inc[0] = (uint32_t)(hz * TO32);
+        v->inc[1] = (uint32_t)(hz * 3.5f * TO32);
+        envs(v, 0.5f, 1.0f, 1.0f, 0.2f, 1.2f + 0.004f);
+        v->d[0] = fm_expf(-L / (0.5f * SR));
+        v->k[0] = 1.0f / v->k[0];
+        v->d[3] = fm_expf(-L / (0.2f * SR));
+        v->k[3] = 1.0f / v->k[3];
+        v->ks_len = L;
+        break;
+    }
+    case V_GLINT:                        /* a sine in over 0.3 s, out over 1.5 */
+        v->inc[0] = (uint32_t)(hz * TO32);
+        envs(v, 1.0f, 1.0f, 1.0f, 1.0f, 1.8f);
+        break;
+    case V_BONGO:                        /* a low-pass gate struck: folded sines */
+        v->inc[0] = (uint32_t)(hz * TO32);
+        v->inc[1] = (uint32_t)(hz * 2.01f * TO32);
+        envs(v, 0.35f, 1.0f, 1.0f, 1.0f, 2.0f);
+        break;
+    case V_NBELL:                        /* a pulse (30%) and the octave's sine, the low-pass closing */
+        v->inc[0] = (uint32_t)(hz * TO32);
+        v->inc[1] = (uint32_t)(hz * 2.0f * TO32);
+        envs(v, 1.1f, 0.3f, 1.0f, 1.0f, 3.5f);
+        break;
+    case V_SYNTH:                        /* a narrow pulse (25%), its low-pass closing: plucked */
+        v->inc[0] = (uint32_t)(hz * TO32);
+        envs(v, 0.5f, 0.25f, 1.0f, 1.0f, 2.2f);
+        break;
     default:                             /* DROPS */
         v->inc[0] = (uint32_t)(hz * TO32);
         v->inc[1] = (uint32_t)(hz * 2.0f * TO32);
@@ -250,8 +328,9 @@ static inline float rhythm_tick(float *l, float *r)
     return 1.0f - st.gmix + st.gmix * st.gate * fm_minf(1.0f, (float)st.step_n * (1.0f / 176.0f));   /* 4 ms in */
 }
 
-/* each voice's level, so that they sound alike: DROPS .. FLUTE, then PULSE and SEQ */
-static const float VGAIN[NVOICE + 2] = {1.0f, 0.5f, 1.9f, 0.95f, 0.95f, 0.95f, 1.1f, 1.1f, 0.8f, 1.2f};
+/* each voice's level, so that they sound alike: DROPS .. FLUTE, PULSE and SEQ, then the pads' (AURORA BELL ..) */
+static const float VGAIN[V_N] = {1.0f, 0.5f, 1.9f, 0.95f, 0.95f, 0.95f, 1.1f, 1.1f, 0.8f, 1.2f,
+                                 0.72f, 1.35f, 3.0f, 0.9f, 1.35f, 1.05f, 2.0f, 0.9f, 1.1f, 1.15f, 1.1f};
 
 /* a sample of the star voices, added to l and r; w a white noise sample */
 static inline void stars_tick(float *l, float *r, float w)
@@ -345,6 +424,83 @@ static inline void stars_tick(float *l, float *r, float w)
             x = sat(svf(v->s[0], v->a, o * 0.5f, 0) * 1.5f) * v->d[0] * 0.8f;
             break;
         }
+        case V_ABELL:
+        case V_GBELL:
+        case V_VBELL:
+            v->ph[0] += v->inc[0];
+            v->ph[1] += v->inc[1];
+            v->ph[2] += v->inc[2];
+            x = wt(SINE, v->ph[0] + (uint32_t)(int32_t)(wt(SINE, v->ph[1]) * v->ks_lp * v->d[3] * 683565275.0f)) * v->d[0];
+            if (v->ks_len > 0.0f)
+                x = x * 0.8f + v->ks_len * wt(SINE, v->ph[2]) * v->d[1];
+            break;
+        case V_STRING:
+            v->ph[0] += v->inc[0];
+            v->ph[1] += v->inc[1];
+            v->ph[2] += v->inc[2];
+            x = (wt(SINE, v->ph[0]) * v->d[0] + 0.5f * wt(SINE, v->ph[1]) * v->d[1] + 0.33f * wt(SINE, v->ph[2]) * v->d[2]
+                 + 0.4f * w * v->d[3]) * 0.6f;
+            break;
+        case V_WHISTLE: {
+            float env = v->t < 6615.0f ? v->t * (1.0f / 6615.0f) : v->t < 15435.0f ? 1.0f
+                        : fm_maxf(0.0f, 1.0f - (v->t - 15435.0f) * (1.0f / 35280.0f));
+            x = svf(v->s[0], v->a, w, 1) * env * 0.12f;
+            break;
+        }
+        case V_GRAINS: {                 /* each grain 34 ms under a raised cosine, now and then an octave up */
+            uint32_t g = (uint32_t)v->t, j;
+            for (j = 0; j < 2u; j++) {   /* the second grain half a grain behind the first */
+                uint32_t gt;
+                if (g < j * 750u || g >= 11025u + j * 750u)
+                    continue;
+                gt = (g - j * 750u) % 1500u;
+                if (gt == 0u)
+                    v->inc[j] = v->inc[2] << ((xs() & 0xFFu) < 77u ? 1 : 0);
+                x += wt(SINE, v->ph[j] += v->inc[j]) * (0.5f - 0.5f * wt(SINE, gt * 2863311u + 0x40000000u));
+            }
+            x *= 0.7f;
+            break;
+        }
+        case V_RBELL:
+            v->ph[0] += v->inc[0];
+            v->ph[1] += v->inc[1];
+            if (v->t < v->ks_len) {
+                float sw = v->t / v->ks_len;
+                x = wt(SINE, v->ph[0] + (uint32_t)(int32_t)(wt(SINE, v->ph[1]) * 2.0f * v->d[3] * 683565275.0f))
+                    * v->d[0] * sw * sw;
+            } else {                     /* the strike: 4 ms out */
+                x = wt(SINE, v->ph[0]) * v->d[0] * fm_maxf(0.0f, 1.0f - (v->t - v->ks_len) * (1.0f / 176.0f));
+            }
+            break;
+        case V_GLINT: {
+            float env = v->t < 13230.0f ? v->t * (1.0f / 13230.0f) : fm_maxf(0.0f, 1.0f - (v->t - 13230.0f) * (1.0f / 66150.0f));
+            v->ph[0] += v->inc[0];
+            x = wt(SINE, v->ph[0]) * env * env;
+            break;
+        }
+        case V_BONGO: {                  /* folded: sin of the sum, deeper the harder it is struck */
+            float y = wt(SINE, v->ph[0] += v->inc[0]) + 0.5f * wt(SINE, v->ph[1] += v->inc[1]);
+            if (((uint32_t)v->t & 31u) == 0u)
+                svf_set(v->a, 200.0f + 6000.0f * v->d[0] * v->d[0], 1.41f);
+            y = wt(SINE, (uint32_t)(int32_t)(y * (1.0f + 3.0f * v->d[0]) * 683565275.0f));
+            x = svf(v->s[0], v->a, y, 0) * v->d[0];
+            break;
+        }
+        case V_NBELL:
+            v->ph[0] += v->inc[0];
+            v->ph[1] += v->inc[1];
+            if (((uint32_t)v->t & 31u) == 0u)
+                svf_set(v->a, 400.0f + 3000.0f * v->d[1], 1.41f);
+            x = svf(v->s[0], v->a, saw(v->ph[0], (float)v->inc[0]) - saw(v->ph[0] + 0x4CCCCCCDu, (float)v->inc[0])
+                                       + wt(SINE, v->ph[1]), 0) * v->d[0] * 0.6f;
+            break;
+        case V_SYNTH:
+            v->ph[0] += v->inc[0];
+            if (((uint32_t)v->t & 31u) == 0u)
+                svf_set(v->a, 500.0f + 2200.0f * v->d[1], 0.67f);
+            x = svf(v->s[0], v->a, saw(v->ph[0], (float)v->inc[0]) - saw(v->ph[0] + 0x40000000u, (float)v->inc[0]), 0)
+                * v->d[0] * 0.6f;
+            break;
         default:                         /* DROPS */
             v->ph[0] += v->inc[0];
             v->ph[1] += v->inc[1];

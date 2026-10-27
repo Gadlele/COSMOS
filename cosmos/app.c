@@ -65,11 +65,12 @@ static struct {                          /* kept in the store (OBJ_SETTINGS) */
     uint8_t pc[2];                       /* with no planet, the chord's root: a pitch class ([1] unused) */
     int8_t trend;
     uint8_t arp, offline, stars;         /* the arpeggiator on; WiFi off (0: on, fetching the weather); the star voice:
-                                          * 0 the moon's (AUTO), 1..8 one fixed */
+                                          * 0 the moon's (AUTO), 1..8 one fixed, 9 the pad's own (PAD, 0.20) */
     float clouds, press, kp, sun, moon;  /* the sky by hand (EDIT) */
     uint8_t drone, spare[3];             /* (0.19) the drone's level, 0..20 (twentieths); settings saved before it load
                                           * without it */
 } set;
+#define STARS_PAD (NVOICE + 1)         /* set.stars: the pad's own voice */
 #define SET_OLD_SIZE (sizeof set - 4u)   /* the settings before 0.19 */
 
 static sky_t sky = {.sun = 20.0f, .clouds = 30.0f, .press = 1015.0f, .trend = 0, .kp = 1.67f, .moon = 0.4f,
@@ -288,7 +289,7 @@ static void choose_sound(void)
     day = day ? sky.sun > -7.0f : sky.sun > -5.0f;   /* civil twilight, with a degree either way */
     sky.engine = set.inst >= 2 && set.inst < 2 + ENG_N ? set.inst - 2 : (day ? PAD_DAY[w] : PAD_NIGHT[w]);
     ph = (int32_t)((sky.moon - fm_floorf(sky.moon)) * 8.0f + 0.5f) & 7;   /* new, crescent, quarter, gibbous, full... */
-    sky.voice = set.stars >= 1 && set.stars <= NVOICE ? set.stars - 1 : ph;
+    sky.voice = set.stars >= 1 && set.stars <= NVOICE ? set.stars - 1 : set.stars == STARS_PAD ? pad_voice(sky.engine) : ph;
     if (sky.rhythm == R_PULSAR)          /* Kp: from 4 the sequence, from 5 the pulse; three tenths back to leave */
         sky.rhythm = sky.kp >= 4.7f ? R_PULSAR : sky.kp >= 3.7f ? R_STARGATE : R_NONE;
     else if (sky.rhythm == R_STARGATE)
@@ -1055,7 +1056,8 @@ static void settings_frame(void)
                 copy(v, set.inst >= 2 && set.inst < 2 + ENG_N ? engine_name(set.inst - 2) : "AUTO", 24);
                 break;
             case 7:
-                copy(v, set.stars >= 1 && set.stars <= NVOICE ? voice_name(set.stars - 1) : "AUTO", 24);
+                copy(v, set.stars >= 1 && set.stars <= NVOICE ? voice_name(set.stars - 1)
+                        : set.stars == STARS_PAD ? "PAD" : "AUTO", 24);
                 break;
             default:
                 copy(v, set.tuning == 0 ? "COSMIC" : set.tuning == 1 ? "EQUAL" : "NATURAL", 24);
@@ -1126,8 +1128,8 @@ static void settings_change(int32_t step, int big)
             set.inst = (uint8_t)(k ? k + 1 : 1);
         }
         break;
-    case 7:                              /* AUTO (the moon's), or one of the star voices */
-        set.stars = (uint8_t)((set.stars + (NVOICE + 1) + (step > 0 ? 1 : -1)) % (NVOICE + 1));
+    case 7:                              /* AUTO (the moon's), one of the star voices, or PAD (the pad's own) */
+        set.stars = (uint8_t)((set.stars + (NVOICE + 2) + (step > 0 ? 1 : -1)) % (NVOICE + 2));
         break;
     default:
         set.tuning = (uint8_t)((set.tuning + 3 + (step > 0 ? 1 : -1)) % 3);

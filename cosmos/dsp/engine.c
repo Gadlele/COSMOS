@@ -9,7 +9,7 @@
  *                                                ring-modulated in a storm
  *   + a pad on top, the whole chord, each chord attacked anew: one of fifteen (pads.c), the weather's by day or by
  *     night (sky_t.engine), gated by PULSAR in a geomagnetic storm (stars.c)
- *   + the star voices: one of eight, the moon's (sky_t.voice), or the rhythms' (stars.c)
+ *   + the star voices: one of eight, the moon's (sky_t.voice), or the rhythms' (stars.c), or the pad's own
  *   ─ a slow stereo chorus
  *   ─┬─ dry ────────────────────────────────┬─ warmth (a soft drive over the sound and its echoes) ─ out
  *    ├─ delay: 0.4 s ping-pong, tape wow ───┤

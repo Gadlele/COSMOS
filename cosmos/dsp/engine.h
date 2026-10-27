@@ -13,7 +13,9 @@ enum { PL_NONE, PL_SUN, PL_MOON, PL_MERCURY, PL_VENUS, PL_MARS, PL_JUPITER, PL_S
 #define ENG_N 15                         /* the pads (pads.c): NEBULA .. STRINGS */
 #define NVOICE 8                         /* the star voices the moon picks (stars.c) */
 enum { V_DROPS, V_KALIMBA, V_HARP, V_CELESTA, V_CHIMES, V_GLASS, V_MUSICBOX, V_FLUTE,
-       V_PULSE, V_SEQ };                 /* and the rhythms' own: PULSAR's pluck, STARGATE's sequence */
+       V_PULSE, V_SEQ,                   /* the rhythms' own: PULSAR's pluck, STARGATE's sequence */
+       V_ABELL, V_STRING, V_WHISTLE, V_GBELL, V_GRAINS, V_VBELL, V_RBELL, V_GLINT, V_BONGO, V_NBELL, V_SYNTH,
+       V_N };                            /* and the pads' own (STARS: PAD, pad_voice) */
 enum { R_NONE, R_STARGATE, R_PULSAR };
 #define NCHORD 4                         /* the instrument's chord: four notes */
 
@@ -62,6 +64,7 @@ const char *moon_name(float moon);            /* "NEW", "WAXING", "FULL", "WANIN
 const char *planet_name(int32_t p);           /* "SUN", "MOON", "MERCURY"... ("" for none) */
 const char *engine_name(int32_t k);           /* the pad: "NEBULA", "AURORA", "RINGS"... */
 const char *voice_name(int32_t k);            /* the star voice: "DROPS", "KALIMBA", "HARP"... */
+int32_t pad_voice(int32_t pad);               /* the pad's own star voice (STARS: PAD) */
 float tension(const sky_t *s);                /* the pressure's tension: -1.4 high and rising .. 2.6 deep and falling */
 
 int eng_init(void);                      /* the delay's and the reverb's lines, from the heap: 0 = done */
