@@ -46,4 +46,12 @@ typedef struct {
 int net_fetch(int32_t lat100, int32_t lon100);   /* 0 = started; -1 = one is running */
 int net_busy(void);
 const net_res_t *net_result(void);
+/* RADIO COSMOS (radio.c, in net.c): the shared sequence, the clock, who is tuned in; a task of its own while on */
+enum { RADIO_OFF, RADIO_NO_WIFI, RADIO_CONNECTING, RADIO_LIVE, RADIO_RETRY };
+int radio_on(int on, const char *id, const char *where);   /* on with this FM-1's id and place, or off; 0 = done */
+int radio_state(void);                   /* RADIO_* */
+const char *radio_why(void);             /* what went wrong last, or "" */
+int radio_clock(uint32_t *sec, uint32_t *ms);   /* the time now (unix s and ms): 1 = synced */
+int radio_slot(uint32_t slot, uint8_t *notes);  /* a 10 s slot's chord (unix s / 10): up to 3 MIDI notes; 0 the sky's */
+void radio_counts(int *fm1, int *web);   /* the FM-1s tuned in (this one too), the web page's visitors */
 void cosmos_entropy(uint8_t *p, unsigned n);   /* app.c: for the TLS random generator */

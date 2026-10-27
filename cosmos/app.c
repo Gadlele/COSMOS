@@ -16,6 +16,8 @@
  *   PRESET the drone's level, always (0 .. 100 %, in steps of 5)
  *   SEL    the next planet up (in EDIT any of the seven classical ones, the Sun and the Moon among them), or none
  *   LFO    the sky alone, and back      ARP the ARP screen, the arpeggio on; again, off and back
+ *   FX     RADIO COSMOS (radio.c, with WiFi): the chords from the sequence written together on the web page, at the
+ *          same moment on every FM-1 tuned in; an empty slot the sky's own; the rest (pad, stars, space) this sky's
  *   GLO    the settings      PLAY the sky stopped or playing (stopping saves)      OCT- / OCT+ the octave
  *   MASTER the volume. The buttons that do something glow, the ones in use bright; the keys glow on the scale,
  *   bright on its root. Saving silences the sound for a moment: only stopping (PLAY) and leaving GLO save.
@@ -131,6 +133,12 @@ static struct {
     uint32_t splash_t0;                  /* the splash running since its first frame (plat_ms) */
     int splash_on;                       /* the splash: 1 still to start, 2 running, 0 over */
     uint32_t splash_btn;                 /* the buttons held at its start: only a new press cuts it */
+    /* RADIO COSMOS (FX): the chords from the shared sequence, everything else this sky's */
+    int radio;                           /* tuned in */
+    char radio_id[6];                    /* this FM-1's: from its chip */
+    uint32_t r_slot;                     /* the 10 s slot playing (unix s / 10); 0 none yet */
+    uint8_t r_cur[3], r_next[3];         /* its chord, and the next one's, locked when this one began */
+    int r_cur_n, r_next_n;               /* their notes; 0: the sky's own chord */
 } ui = {.rnd = 0x2545F491u};
 
 static uint32_t unix_now(void) { return ui.clock_unix + (plat_ms() - ui.clock_ms) / 1000u; }
@@ -300,6 +308,69 @@ static void choose_sound(void)
 
 /* what the drones play: a chord, on the last key's note with no planet; else the planet's four in turn, or a key's
  * chord of its scale */
+/* RADIO: the slot's chord, the same notes everywhere; the drone on its lowest, the pad an octave over it; the mode
+ * nearest the sun's that holds it, for the stars (the sky's own still for the sound) */
+static void radio_chord(void)
+{
+    int32_t r[3], n = 0, i, j, m, best = -1;
+    int32_t lo = ui.r_cur[0], m0 = mode_of_sun(sky.sun);
+    float root, flo = 65.406f * fm_exp2f((float)(set.octave - 2));
+    for (i = 1; i < ui.r_cur_n; i++)
+        if (ui.r_cur[i] < lo)
+            lo = ui.r_cur[i];
+    for (i = 0; i < ui.r_cur_n; i++) {   /* each note above the lowest, in the octave, once, in order */
+        int32_t v = (ui.r_cur[i] - lo) % 12;
+        for (j = 0; j < n && r[j] != v; j++)
+            ;
+        if (j == n)
+            r[n++] = v;
+    }
+    for (i = 1; i < n; i++)
+        for (j = i; j > 0 && r[j] < r[j - 1]; j--) {
+            int32_t t = r[j];
+            r[j] = r[j - 1];
+            r[j - 1] = t;
+        }
+    for (m = 0; m < 12 && best < 0; m++) {   /* m0, m0 - 1, m0 + 1, m0 - 2... */
+        int32_t k = m0 + (m & 1 ? -(m + 1) / 2 : m / 2), ok = 1;
+        if (k < 0 || k > 5)
+            continue;
+        for (i = 0; i < n && ok; i++) {
+            ok = 0;
+            for (j = 0; j < 7; j++)
+                ok |= MODES[k][j] == r[i];
+        }
+        if (ok)
+            best = k;
+    }
+    ui.mode = best >= 0 ? best : m0;
+    root = 440.0f * fm_exp2f((float)(lo - 69) / 12.0f);
+    while (root >= 2.0f * flo)
+        root *= 0.5f;
+    while (root < flo)
+        root *= 2.0f;
+    sky.hz[0] = sky.hz[1] = root;
+    sky.pr[0] = sky.pr[1] = 2.0f;        /* the drone's partner: the fifth when the chord has it, else the octave */
+    for (i = 0; i < n; i++)
+        if (r[i] == 7)
+            sky.pr[0] = sky.pr[1] = 1.5f;
+    {
+        int changed = 0;
+        for (i = 0; i < NCHORD; i++) {   /* its notes, then the lowest an octave up; 0: left out */
+            float f = i < n ? root * 2.0f * ratio(r[i]) : i == n ? root * 4.0f : 0.0f;
+            if (fm_fabsf(f - sky.notes[i]) > f * 0.001f + 0.001f)
+                changed = 1;
+            sky.notes[i] = f;
+        }
+        if (changed)
+            sky.chord_n++;
+    }
+    choose_sound();
+    sky.root_hz = root;
+    for (i = 0; i < 7; i++)
+        sky.scale[i] = MODES[ui.mode][i];
+}
+
 static void harmony(void)
 {
     uint32_t now = plat_ms();
@@ -308,6 +379,13 @@ static void harmony(void)
     ui.mode = mode_of_sun(sky.sun);
     root = p == PL_NONE ? 440.0f * fm_exp2f((float)(12 * (set.octave + 1) + set.pc[0] - 69) / 12.0f) : root_hz(p);
     ui.chord = (int32_t)((now - ui.chords_t0) / CHORD_MS % 4u);   /* with a planet or not, the four go round */
+    if (ui.radio && ui.r_slot) {
+        ui.chord = (int32_t)(ui.r_slot % 4u);   /* RADIO: on the shared clock's slots */
+        if (ui.r_cur_n) {
+            radio_chord();
+            return;
+        }
+    }
     d = now < ui.key_until && p != PL_NONE ? ui.key_deg : PROG[p][ui.chord];
     sky.hz[0] = root * ratio(semis(d));  /* the drone: the root, its partner the fifth */
     sky.pr[0] = ratio(semis(d + 4) - semis(d));
@@ -798,6 +876,94 @@ static char *note_name(char *d, float hz)
 #define NLINES 11
 #define TY0 32
 /* the readings, line by line, with their colours */
+/* ---- RADIO COSMOS */
+static const char *const NOTE_NAME[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+#define C_RADIO RGB(150, 190, 255)
+
+/* this FM-1's id: its chip's ID hashed (FNV-1a) into 5 characters, the same every time */
+static void radio_make_id(void)
+{
+    static const char ID_CHARS[] = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    const uint8_t *u = plat_chip_uid();
+    uint32_t h = 2166136261u;
+    int i;
+    for (i = 0; i < 16; i++)
+        h = (h ^ (u ? u[i] : 0u)) * 16777619u;
+    for (i = 0; i < 5; i++) {
+        ui.radio_id[i] = ID_CHARS[h % (sizeof ID_CHARS - 1u)];
+        h = h / (sizeof ID_CHARS - 1u) ^ (h << 27);
+    }
+    ui.radio_id[5] = 0;
+}
+static char *dec2(char *d, int32_t v)    /* hundredths as a decimal: "41.90", "-3.70" */
+{
+    if (v < 0) {
+        *d++ = '-';
+        v = -v;
+    }
+    d = put_int(d, v / 100);
+    *d++ = '.';
+    *d++ = (char)('0' + v / 10 % 10);
+    *d++ = (char)('0' + v % 10);
+    *d = 0;
+    return d;
+}
+static void radio_set(int on)
+{
+    char where[24];
+    if (on && set.offline) {
+        app_say("RADIO", "NEEDS WIFI (ENV)");
+        return;
+    }
+    if (on && !ui.radio_id[0])
+        radio_make_id();
+    dec2(put(dec2(where, set.lat100), " "), set.lon100);
+    if (radio_on(on, ui.radio_id, where) != 0) {
+        app_say("RADIO", "NOT HERE");
+        return;
+    }
+    ui.radio = on;
+    ui.r_slot = 0;
+    ui.r_cur_n = ui.r_next_n = 0;
+    app_say("RADIO COSMOS", on ? "TUNED IN" : "OFF");
+}
+/* each frame: the slot on the shared clock; when one begins, its chord is the one locked, and the next one locks */
+static void radio_tick(void)
+{
+    uint32_t sec, ms, slot;
+    if (!ui.radio)
+        return;
+    if (set.offline) {
+        radio_set(0);
+        return;
+    }
+    if (!radio_clock(&sec, &ms))
+        return;
+    slot = sec / 10u;
+    if (slot == ui.r_slot)
+        return;
+    if (ui.r_slot && slot == ui.r_slot + 1u) {
+        ui.r_cur_n = ui.r_next_n;
+        ui.r_cur[0] = ui.r_next[0];
+        ui.r_cur[1] = ui.r_next[1];
+        ui.r_cur[2] = ui.r_next[2];
+    } else {                             /* tuned in just now (or a jump): what the broker has for it */
+        ui.r_cur_n = radio_slot(slot, ui.r_cur);
+    }
+    ui.r_next_n = radio_slot(slot + 1u, ui.r_next);
+    ui.r_slot = slot;
+}
+/* "A-C-E", or "SKY" */
+static char *chord_text(char *d, const uint8_t *n, int c)
+{
+    int i;
+    if (!c)
+        return put(d, "SKY");
+    for (i = 0; i < c; i++)
+        d = put(i ? put(d, "-") : d, NOTE_NAME[n[i] % 12u]);
+    return d;
+}
+
 static void readings(char lines[NLINES][32], uint16_t col[NLINES])
 {
     sky_map_t m;
@@ -826,7 +992,7 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
     field(l, "PRESS", v, 12);
     {   /* the chord's colour */
         float t = tension(&sky);
-        field(r, "CHORD", t < 0.3f ? "TRIAD" : t < 1.3f ? "7TH" : "SUS 9", 12);
+        field(r, "CHORD", ui.radio && ui.r_cur_n ? "RADIO" : t < 0.3f ? "TRIAD" : t < 1.3f ? "7TH" : "SUS 9", 12);
     }
     line2(lines[4], l, r);
     q = put_int(v, round_f(sky.kp * 10.0f) / 10);
@@ -860,6 +1026,18 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
         copy(lines[8], seen ? v : "NO PLANET IN SIGHT", 32);
         col[8] = C_MID;
     }
+    if (ui.radio) {                      /* RADIO: who is tuned in; the chord now and the next */
+        int st = radio_state(), f = 0, w = 0;
+        uint32_t s0, ms0;
+        if (st == RADIO_LIVE && radio_clock(&s0, &ms0)) {
+            radio_counts(&f, &w);
+            put(put_int(put(put_int(put(lines[8], "RADIO  "), f), " FM-1  "), w), " WEB");
+        } else {
+            copy(lines[8], st == RADIO_LIVE ? "RADIO: SETTING THE CLOCK" : st == RADIO_NO_WIFI ? "RADIO: WAITING FOR WIFI"
+                         : st == RADIO_RETRY && radio_why()[0] ? radio_why() : "RADIO: TUNING IN", 32);
+        }
+        col[8] = C_RADIO;
+    }
     if (plat_ms() < ui.msg_until) {
         line2(lines[9], ui.msg[0], ui.msg[1]);
     } else {
@@ -871,7 +1049,9 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
         line2(lines[9], l, v);
         col[9] = C_MID;
     }
-    if (set.manual) {
+    if (ui.radio && ui.r_slot) {
+        chord_text(put(chord_text(put(lines[10], "NOW "), ui.r_cur, ui.r_cur_n), "  NEXT "), ui.r_next, ui.r_next_n);
+    } else if (set.manual) {
         copy(lines[10], "EDIT: THE SKY BY HAND", 32);
     } else {
         int32_t age = weather_age_min();
@@ -880,7 +1060,7 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
         else
             copy(lines[10], set.offline ? "OFFLINE: RANDOM WEATHER" : "HOME: RANDOM WEATHER (ENV)", 32);
     }
-    col[10] = set.manual ? C_MID : C_LOW;
+    col[10] = ui.radio && ui.r_slot ? C_RADIO : set.manual ? C_MID : C_LOW;
 }
 
 static uint16_t grey(int32_t g)
@@ -1417,7 +1597,7 @@ static void lights(void)
         db = 1u << B_ENV | 1u << B_SAVE | 1u << B_SEL | 1u << B_PLAY | 1u << B_HOME;
         bb = 1u << B_ENV;
     } else {
-        db = 1u << B_HOME | 1u << B_EDIT | 1u << B_SEL | 1u << B_GLO | 1u << B_LFO | 1u << B_ARP | 1u << B_PLAY
+        db = 1u << B_HOME | 1u << B_EDIT | 1u << B_SEL | 1u << B_GLO | 1u << B_LFO | 1u << B_ARP | 1u << B_PLAY | 1u << B_FX
              | 1u << B_OCTDN | 1u << B_OCTUP | 1u << B_ENV;
         bb |= set.manual ? 1u << B_EDIT : 1u << B_HOME;
         if (ui.view_sky)
@@ -1426,6 +1606,8 @@ static void lights(void)
             bb |= 1u << B_ENV;           /* the weather is the network's */
         if (set.arp)
             bb |= 1u << B_ARP;
+        if (ui.radio)
+            bb |= 1u << B_FX;
         if (sky.planet != PL_NONE)
             bb |= 1u << B_SEL;
         if (sky.on)
@@ -1555,6 +1737,8 @@ static void input(void)
             app_say(p == PL_NONE ? "NO PLANET" : planet_name(p), p == PL_NONE ? "" : "ITS SCALE");
         }
     }
+    if (down >> B_FX & 1u && ui.screen == 0)   /* RADIO COSMOS, and off */
+        radio_set(!ui.radio);
     if (down >> B_OCTDN & 1u && set.octave > 1) { set.octave--; ui.dirty = 1; }
     if (down >> B_OCTUP & 1u && set.octave < 4) { set.octave++; ui.dirty = 1; }
     if (down >> B_ARP & 1u && ui.screen == 0) {   /* the ARP screen: the sky, the line, what it plays lighting up */
@@ -1574,7 +1758,7 @@ static void input(void)
         if (!sky.on)                     /* stopped: a quiet moment to save (saving silences the sound) */
             save();
     }
-    for (k = 0; k < NKEYS; k++)
+    for (k = 0; k < NKEYS && !ui.radio; k++)   /* (RADIO: the chords are the radio's) */
         if (keys >> k & 1u) {            /* a key's chord: held, and 10 s after */
             if (sky.planet == PL_NONE) {
                 if (kdown >> k & 1u) {   /* its note the new root */
@@ -1641,6 +1825,7 @@ void app_frame(void)
             nature_to_sky();
         ui.last_weather = now;
     }
+    radio_tick();
     harmony();                           /* the chords move on their own: every frame */
     sky.drone_on[0] = !ui.splash_on && (sky.on || now < ui.key_until);   /* after the splash; stopped, a key still
                                                                          * plays */
@@ -1702,4 +1887,41 @@ int net_fetch(int32_t lat100, int32_t lon100)
 }
 int net_busy(void) { return 0; }
 const net_res_t *net_result(void) { return &host_res; }
+/* RADIO: on the computer a broadcast going round A-C-E, F-A-C, the sky, G-B-D, three FM-1s and two visitors; in the
+ * browser none */
+static int host_radio;
+int radio_on(int on, const char *id, const char *where)
+{
+    (void)id, (void)where;
+#ifdef PLAT_WEB
+    return on ? -1 : 0;
+#else
+    host_radio = on;
+    return 0;
+#endif
+}
+int radio_state(void) { return host_radio ? RADIO_LIVE : RADIO_OFF; }
+const char *radio_why(void) { return ""; }
+int radio_clock(uint32_t *sec, uint32_t *ms)
+{
+    uint32_t t = plat_ms() - ui.clock_ms;
+    *sec = ui.clock_unix + t / 1000u;
+    *ms = t % 1000u;
+    return host_radio;
+}
+int radio_slot(uint32_t slot, uint8_t *notes)
+{
+    static const uint8_t DEMO[4][3] = {{57, 60, 64}, {53, 57, 60}, {0, 0, 0}, {55, 59, 62}};
+    int i;
+    if (!DEMO[slot % 4u][0])
+        return 0;
+    for (i = 0; i < 3; i++)
+        notes[i] = DEMO[slot % 4u][i];
+    return 3;
+}
+void radio_counts(int *fm1, int *web)
+{
+    *fm1 = 3;
+    *web = 2;
+}
 #endif
