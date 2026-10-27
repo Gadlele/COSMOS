@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: GPL-3.0-or-later — COSMOS's phone remote: the phone's tilt opens and closes the FM-1's
-     filter, over the internet (MQTT over WebSocket to a public broker; the FM-1 listens there, ENV > SEQ) -->
+     filter, over the internet (MQTT over WebSocket to a public broker; the FM-1 listens there: the TILT test firmware, tilt/) -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -76,7 +76,7 @@ footer { font: 12px/1.5 var(--mono); color: var(--mid); text-align: center; }
       <input id="code" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="•••••" inputmode="text">
       <button id="go" class="btn primary">Connect</button>
     </div>
-    <p class="hint">On the FM-1 press <b>ENV</b>, then <b>SEQ</b>: the code appears under <b>PHONE REMOTE</b>. The FM-1 needs WiFi.</p>
+    <p class="hint">The code is on the FM-1's screen, under <b>REMOTE</b> (the <b>TILT</b> test firmware). The FM-1 needs WiFi.</p>
   </section>
 
   <div id="play" class="pad" hidden>
@@ -92,7 +92,7 @@ footer { font: 12px/1.5 var(--mono); color: var(--mid); text-align: center; }
     <button id="stop" class="btn ghost">Disconnect</button>
   </div>
 
-  <footer>The filter opens again by itself 10 s after the phone goes quiet.</footer>
+  <footer>The filter goes back to the FM-1's knob 10 s after the phone goes quiet.</footer>
 </div>
 
 <script>
