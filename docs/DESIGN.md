@@ -151,28 +151,37 @@ SAVE joins (8 characters at least), SEL goes back to the list.
 
 FX opens the RADIO page (with WiFi). ALGO picks the role:
 
-- **PLAYER**: the keys play notes (an octave over them, in this sky's star voice) and each goes out with the time it
-  was played. A violet frame round the sky; the page and the readings say how many listen.
+- **PLAYER**: the players pair up two by two, at random. In a pair one plays the **PAD** and the other the
+  **BELLS**, a coin both toss alike (the two ids hashed, the lower first). The keys play single notes an octave over
+  them: the pad's held while the key is, the bells' ringing out. Each hears its partner's notes at once, its keys
+  lighting up. Alone (an odd one out, or waiting), a player plays the bells, and listeners hear it. A partner gone:
+  free again, paired with the next. The page says "YOU PAD WITH <id>", "YOU BELLS WITH <id>" or "WAITING FOR A
+  PARTNER", and how many listen; the constellation draws the pair's line in violet.
 - **LISTENER**: the page shows the players on air as a constellation: each a star where it is on the Earth (the map
-  fitted to them), the whole turning slowly and breathing, faint lines between neighbours, a star flashing as its
-  player plays. SELECT goes from star to star (west to east), with its code and place; SAVE listens to it (again:
-  stops). One player at a time, heard in this sky's own star voice (the moon's, the pad's or the one fixed in GLO),
-  600 ms after it was played, the same everywhere; the keys it plays light up. A blue frame round the sky; the
-  readings say whom. A listener's own keys play its chords as ever.
+  fitted to them), the whole turning slowly and breathing, a line between the two of a pair, a star flashing as its
+  player plays. SELECT goes from star to star (west to east), with its code and place, or the pair's two codes; SAVE
+  listens to its pair, or to one alone (again: stops). Heard 600 ms after it was played, the same everywhere; the keys
+  it plays light up.
 - **OFF**.
 
-A player does not hear the others. The page buttons work from the RADIO page too; PLAY, the octave and the keys go
-on there.
+Every FM-1 plays what it hears in its own sky's sounds: the pad this sky chose, the star voice this sky chose (the
+moon's, the pad's or the one fixed in GLO). While a role is on, COSMOS's own sound stops (the drone, the pad's
+chords, the star arpeggio, the rhythms) and PLAY does nothing; the keys are the radio's. Any other button leaves:
+the role goes OFF, the sky plays again, and the button does what it does. (SAVE is the listener's.)
 
 Underneath: a task of its own (`cosmos/radio.c`), started once WiFi is connected, keeps the time (SNTP, to the
-millisecond) and a plain MQTT connection to a public broker (broker.hivemq.com), under `cosmos-radio/v2/`:
-`here/<id>` (retained) each FM-1 tuned in, "<lat> <lon> P" or "<lat> <lon> L [<player>]", its will emptying it;
-`play/<id>` a player's notes, "<t> <note> ...", t the ms of the day (UTC). The messages are notes, not sound. The id
-is 5 characters from the chip's own ID. `tools/radio_host` runs it on a computer against a local broker.
+millisecond) and a plain MQTT connection to a public broker (broker.hivemq.com), under `cosmos-radio/v3/`:
+`here/<id>` (retained) each FM-1 tuned in, "<lat> <lon> P [<partner>]" or "<lat> <lon> L [<player>]", its will
+emptying it; `play/<id>` a player's notes, "<t> <k><note> ...", t the ms of the day (UTC), k `b` a bell, `p` a pad
+note held, `o` let go. The pairs need no server: a free player names a free player at random as its partner; one
+named takes the one naming it; both naming each other, the pair is made; unanswered in 4 s, or the partner gone,
+free again. The messages are notes, not sound. The id is 5 characters from the chip's own ID. `tools/radio_host`
+runs it on a computer against a local broker.
 
 The test player (`web/site/radio-player`, published at /COSMOS/radio/player/) is a web page that is a player: on air
-at a place it is given, it plays a slow pentatonic walk by itself or its keys (the FM-1's 27), so one FM-1 can try
-listening alone. (The 0.21 radio's shared chord sequence and its page are retired: `web/site/radio`, unpublished.)
+at a place it is given, it pairs like an FM-1 (PAD or BELLS), plays by itself (the bells a slow pentatonic walk, the
+pad long notes) or its keys (the FM-1's 27), and lights the partner's notes, so one FM-1 can try a pair alone.
+(The 0.21 radio's shared chord sequence and its page are retired: `web/site/radio`, unpublished.)
 
 ## Offline mode
 

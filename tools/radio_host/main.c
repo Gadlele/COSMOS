@@ -5,8 +5,8 @@
  * harness, not part of the firmware.
  *   cc -O1 -DRD_HOST='"127.0.0.1"' -DRD_PORT=1883 -DRD_NTP_HOST='"127.0.0.1"' -DRD_NTP_PORT=12300 \
  *      -I../../cosmos main.c -lpthread -o radio_host
- *   ./radio_host ID seconds P          a player: a note every 400 ms
- *   ./radio_host ID seconds L [PLAYER] a listener (of PLAYER's id): each note heard, with how late it came
+ *   ./radio_host ID seconds P          a player: paired, its part's note every 400 ms (the pad's held 300 ms)
+ *   ./radio_host ID seconds L [PLAYER] a listener (of PLAYER's pair): each note heard, with how late it came
  *   (-DRD_KEEP_S=4: the pings and the watchdog, quickly; PLACE="lat lon" in the environment) */
 #include <stdint.h>
 #include <stdio.h>
@@ -69,7 +69,7 @@ static uint32_t day_ms(void)                     /* the radio clock's ms of the 
 int main(int argc, char **argv)
 {
     uint32_t until, last = 0, last_note = 0;
-    int last_state = -1, role, n = 0, listening = 0;
+    int last_state = -1, role, n = 0, listening = 0, last_jam = -1, held = -1;
     if (argc < 4 || (argv[3][0] != 'P' && argv[3][0] != 'L')) {
         fprintf(stderr, "usage: radio_host ID seconds P|L [PLAYER]\n");
         return 2;
@@ -79,34 +79,44 @@ int main(int argc, char **argv)
     if (radio_on(role, argv[1], getenv("PLACE") ? getenv("PLACE") : "41.90 12.50"))
         return 1;
     while ((int32_t)(plat_ms() - until) < 0) {
-        uint32_t t, h, noted;
-        uint8_t note;
-        char id[6], place[14];
-        int i;
+        uint32_t t, h, noted, mate;
+        uint8_t note, kind;
+        char id[6], place[14], pid[6] = "";
+        int i, jam = radio_jam(pid);
         if (radio_state() != last_state)
             printf("state %d %s\n", last_state = radio_state(), radio_why()), fflush(stdout);
+        if (role == 1 && jam != last_jam)
+            printf("jam %s %s\n", jam == 1 ? "PAD" : jam == 2 ? "BELLS" : "ALONE", pid), fflush(stdout), last_jam = jam;
+        if (held >= 0 && plat_ms() - last_note >= 300u) {
+            radio_play(day_ms(), 'o', (uint8_t)held);
+            held = -1;
+        }
         if (role == 1 && radio_state() == RADIO_LIVE && plat_ms() - last_note >= 400u) {   /* a scale, round */
             static const uint8_t SC[8] = {60, 62, 64, 65, 67, 69, 71, 72};
             last_note = plat_ms();
-            if (day_ms())
-                radio_play(day_ms(), SC[n++ % 8]);
+            if (day_ms()) {
+                radio_play(day_ms(), jam == 1 ? 'p' : 'b', SC[n % 8]);
+                if (jam == 1)
+                    held = SC[n % 8];
+                n++;
+            }
         }
         if (role == 2 && !listening && argc > 4)  /* the player asked for, once it is on air */
-            for (i = 0; radio_player(i, &h, id, place, &noted); i++)
+            for (i = 0; radio_player(i, &h, id, place, &noted, &mate); i++)
                 if (!strcmp(id, argv[4])) {
                     radio_listen(h, id);
                     listening = 1;
                     printf("listening to %s at %s\n", id, place), fflush(stdout);
                 }
-        while (radio_heard(&t, &note)) {
+        while (radio_heard(&t, &kind, &note)) {
             int32_t late = (int32_t)(day_ms() - t);
-            printf("heard %u late %d ms\n", (unsigned)note, (int)late), fflush(stdout);
+            printf("heard %c%u late %d ms\n", kind, (unsigned)note, (int)late), fflush(stdout);
         }
         if (plat_ms() - last >= 5000u) {          /* every 5 s: the players on air, who listens to this one */
             last = plat_ms();
             printf("players:");
-            for (i = 0; radio_player(i, &h, id, place, &noted); i++)
-                printf(" %s(%s, note %u ms ago)", id, place, (unsigned)noted);
+            for (i = 0; radio_player(i, &h, id, place, &noted, &mate); i++)
+                printf(" %s(%s, note %u ms ago%s)", id, place, (unsigned)noted, mate ? ", paired" : "");
             printf("  listeners %d\n", radio_listeners()), fflush(stdout);
         }
         usleep(2000);

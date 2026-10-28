@@ -249,6 +249,38 @@ static void voice_steps(voice_t *v, float dt)
     }
 }
 
+/* RADIO's pad: single notes held by a key (eng_pad_note), from the main loop, taken a block at a time */
+#define PK_N 16
+static volatile struct { float hz; int32_t on; } pk_q[PK_N];
+static volatile uint32_t pk_w, pk_r;
+void eng_pad_note(float hz, int on)
+{
+    if (pk_w - pk_r >= PK_N)
+        return;
+    pk_q[pk_w % PK_N].hz = hz;
+    pk_q[pk_w % PK_N].on = on;
+    pk_w++;
+}
+static void pads_keys(int32_t pad)
+{
+    int32_t j;
+    while (pk_r != pk_w) {
+        float hz = pk_q[pk_r % PK_N].hz;
+        if (pk_q[pk_r % PK_N].on) {      /* a voice: the free or the quietest */
+            int32_t q = 0;
+            for (j = 1; j < NV; j++)
+                if (!pd.v[j].held && (pd.v[q].held || pd.v[j].env < pd.v[q].env))
+                    q = j;
+            voice_start(&pd.v[q], pad, hz, (int32_t)(pk_r % 4u));
+        } else {                         /* let go: its voices (hz 0: all) */
+            for (j = 0; j < NV; j++)
+                if (hz <= 0.0f || fm_fabsf(pd.v[j].hz - hz) < hz * 0.001f)
+                    pd.v[j].held = 0;
+        }
+        pk_r++;
+    }
+}
+
 /* a block: a new chord (the old one let go, the new attacked), the pads' slow movements, their filters */
 static void pads_block(uint32_t frames, int32_t pad, int32_t on, const volatile float *notes, uint32_t chord_n)
 {
@@ -295,6 +327,7 @@ static void pads_block(uint32_t frames, int32_t pad, int32_t on, const volatile 
         for (j = 0; j < NV; j++)
             pd.v[j].held = 0;
     pd.on = on;
+    pads_keys(pad);
     pd.chord_t += dt;
     /* the slow movements: the rotor (0.8 Hz), the tape (0.5 Hz, 18 cents; flutter 6.3 Hz), the gusts */
     pd.rot += 0.8f * dt;

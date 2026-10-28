@@ -1,12 +1,13 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: GPL-3.0-or-later — RADIO COSMOS's test player: a page that is a PLAYER on the radio
-     (cosmos-radio/v2/, as cosmos/radio.c): its star shows in the FM-1s' constellation; it plays by itself, or its keys -->
+     (cosmos-radio/v3/, as cosmos/radio.c): it pairs with another player (PAD or BELLS, a coin both toss alike), its
+     star shows in the FM-1s' constellation; it plays by itself, or its keys -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Radio Test Player</title>
-<meta name="description" content="A test player for RADIO COSMOS: an FM-1 set as a LISTENER finds it in its constellation.">
+<meta name="description" content="A test player for RADIO COSMOS: it pairs with an FM-1 set as a PLAYER, and LISTENERS find it in their constellation.">
 <meta name="theme-color" content="#06080e">
 <link rel="icon" href="../../img/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,7 +15,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
 <style>
 :root { --bg: #06080e; --panel: #0e121d; --rule: #1f2638; --text: #e9ecf5; --mid: #8f96ad; --accent: #cfd8ff; --on-accent: #0a0d18;
-        --glow: rgba(207, 216, 255, .14); --storm: #ffb38a; --live: #9fe6b8; --player: #b98cff;
+        --glow: rgba(207, 216, 255, .14); --storm: #ffb38a; --live: #9fe6b8; --player: #b98cff; --radio: #96beff;
         --body: 'IBM Plex Sans', system-ui, sans-serif; --display: DotGothic16, 'IBM Plex Mono', monospace;
         --mono: 'IBM Plex Mono', ui-monospace, monospace; color-scheme: dark; }
 * { box-sizing: border-box; }
@@ -51,6 +52,7 @@ input[type=number] { width: 100%; background: var(--bg); color: var(--text); bor
 .key.w { height: 150px; background: #dfe3ef; z-index: 1; }
 .key.b { height: 92px; background: #1a1f2e; z-index: 2; }
 .key.on { background: var(--player) !important; box-shadow: 0 0 18px rgba(185,140,255,.6); }
+.key.them { background: var(--radio) !important; box-shadow: 0 0 18px rgba(150,190,255,.6); }
 .log { font: 13px/1.6 var(--mono); color: var(--mid); min-height: 1.6em; word-break: break-word; }
 .how { color: var(--mid); font-size: 15px; } .how b { color: var(--text); } .how ol { margin: 8px 0 0; padding-left: 20px; }
 </style>
@@ -63,7 +65,7 @@ input[type=number] { width: 100%; background: var(--bg); color: var(--text); bor
   </header>
   <section>
     <h1>Radio test player</h1>
-    <p class="lead">This page is a PLAYER on RADIO COSMOS. While it is open and on air, an FM-1 set as a LISTENER finds its star in the constellation and hears what it plays, in its own sky's voice.</p>
+    <p class="lead">This page is a PLAYER on RADIO COSMOS. On air, it pairs with another player: one plays the PAD, the other the BELLS, chosen at random. An FM-1 set as a PLAYER can be its partner; one set as a LISTENER finds the pair in its constellation.</p>
   </section>
 
   <section class="card">
@@ -71,6 +73,7 @@ input[type=number] { width: 100%; background: var(--bg); color: var(--text); bor
       <div><label class="k">Its code</label><div class="big" id="code">–</div></div>
       <div><label class="k" for="lat">Latitude</label><input id="lat" type="number" step="0.01" min="-90" max="90" value="51.48"></div>
       <div><label class="k" for="lon">Longitude</label><input id="lon" type="number" step="0.01" min="-180" max="180" value="0.00"></div>
+      <div><label class="k">Its part</label><div class="big" id="part">–</div></div>
       <div><label class="k">Listening</label><div class="big" id="nlist">–</div></div>
     </div>
     <div class="row">
@@ -81,7 +84,7 @@ input[type=number] { width: 100%; background: var(--bg); color: var(--text); bor
   </section>
 
   <section class="card">
-    <label class="k">Or play it yourself</label>
+    <label class="k">Or play it yourself <span id="partner"></span></label>
     <div class="keys" id="keys"></div>
     <p class="log" id="log"></p>
   </section>
@@ -90,8 +93,9 @@ input[type=number] { width: 100%; background: var(--bg); color: var(--text); bor
     <b>How to test</b>
     <ol>
       <li>Here: <b>Go on air</b>.</li>
-      <li>On the FM-1 (COSMOS 0.22, WiFi on): <b>FX</b>, then <b>ALGO</b> to LISTENER.</li>
-      <li>This page's star appears in the constellation (at the place above): <b>SELECT</b> it, <b>SAVE</b> to listen.</li>
+      <li>On the FM-1 (COSMOS 0.23, WiFi on): <b>FX</b>, then <b>ALGO</b> to PLAYER. In a few seconds the two pair up: the FM-1 says <b>YOU PAD WITH …</b> or <b>YOU BELLS WITH …</b> with this page's code, and each hears the other.</li>
+      <li>Or set the FM-1 as a LISTENER: this page's star appears in the constellation (at the place above); <b>SELECT</b> it, <b>SAVE</b> to listen.</li>
+      <li>With two of these pages open (two browsers), they pair with each other.</li>
     </ol>
   </section>
 </div>
@@ -100,7 +104,7 @@ input[type=number] { width: 100%; background: var(--bg); color: var(--text); bor
 'use strict';
 const qs = new URLSearchParams(location.search);
 const BROKER = qs.get('broker') || 'wss://broker.hivemq.com:8884/mqtt';
-const T = 'cosmos-radio/v2/';
+const T = 'cosmos-radio/v3/';
 const $ = id => document.getElementById(id);
 const enc = new TextEncoder(), dec = new TextDecoder();
 const ID_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -199,64 +203,147 @@ class Mqtt {
 }
 
 
-// ---- on air: the presence (a player, at its place), the notes as "<t> <note>"
+// ---- on air: the presence (a player at its place, and its partner), the notes as "<t> <k><note>" (k: b a bell,
+// p a pad note held, o let go). The pairs as cosmos/radio.c makes them: each free player asks one free player at
+// random (naming it); one asked takes the one who asked; both naming each other, the pair is made; unanswered in 4 s,
+// or the partner gone, free again. The coin: the two ids hashed (FNV-1a), the lower first; heads, the lower plays PAD
 let mq = null;
-const listeners = new Set();
+const peers = new Map();                             // id -> {role: 'P'|'L', target: id or ''}
+let partner = '', askedAt = 0, nextAsk = 0, part = 0, lastPres = '';
+function fnv(str) {
+  let h = 2166136261;
+  for (const c of enc.encode(str)) h = Math.imul(h ^ c, 16777619) >>> 0;
+  return h || 1;
+}
 function place() {
   const f = v => (Math.round(Math.max(-180, Math.min(180, +v || 0)) * 100) / 100).toFixed(2);
   return f($('lat').value) + ' ' + f($('lon').value);
 }
+function presence() {
+  const m = place() + ' P' + (partner ? ' ' + partner : '');
+  if (mq && mq.ok && m !== lastPres && mq.publish(T + 'here/' + ID, m, true)) lastPres = m;
+}
 function setState(cls, text) { const s = $('state'); s.className = 'state ' + cls; s.textContent = text; }
+function setPartner(id) { partner = id; askedAt = Date.now(); presence(); }
+function pairTick() {
+  if (!mq || !mq.ok) return;
+  const t = Date.now(), p = partner && peers.get(partner);
+  if (partner) {
+    if (!p || p.role !== 'P' || (p.target && p.target !== ID)) { setPartner(''); nextAsk = t + 500 + Math.random() * 1500; }
+    else if (p.target !== ID && t - askedAt > 4000) { setPartner(''); nextAsk = t + 500 + Math.random() * 2500; }
+  }
+  if (!(partner && peers.get(partner)?.target === ID)) {
+    let asking = '';
+    for (const [id, q] of peers) if (id !== ID && q.role === 'P' && q.target === ID) { asking = id; break; }
+    if (asking) { if (asking !== partner) setPartner(asking); }
+    else if (!partner && t >= nextAsk) {
+      const free = [...peers].filter(([id, q]) => id !== ID && q.role === 'P' && !q.target).map(([id]) => id);
+      if (free.length) setPartner(free[Math.floor(Math.random() * free.length)]);
+    }
+  }
+  let now = 0;
+  if (partner && peers.get(partner) && peers.get(partner).target === ID) {
+    const lo = ID < partner, a = lo ? ID + partner : partner + ID, coin = (fnv(a) >>> 7) & 1;
+    now = coin === (lo ? 1 : 0) ? 1 : 2;
+  }
+  if (now !== part) { allOff(); part = now; }
+  $('part').textContent = part === 1 ? 'PAD' : part === 2 ? 'BELLS' : 'alone';
+  $('partner').textContent = part ? '— with ' + partner : '— waiting for a partner (the bells)';
+  let n = 0;                                         // listening: to this one, or to its partner
+  for (const [, q] of peers) if (q.role === 'L' && q.target && (q.target === ID || (part && q.target === partner))) n++;
+  $('nlist').textContent = n;
+}
+setInterval(pairTick, 100);
 function onMessage(topic, msg) {
-  if (!topic.startsWith(T + 'here/')) return;
-  const id = topic.slice(T.length + 5), w = msg.trim().split(/\s+/);
-  if (w[2] === 'L' && w[3] === ID) listeners.add(id); else listeners.delete(id);
-  $('nlist').textContent = listeners.size;
+  if (topic.startsWith(T + 'here/')) {
+    const id = topic.slice(T.length + 5), w = msg.trim().split(/\s+/);
+    if (!msg.trim()) peers.delete(id); else peers.set(id, { role: w[2] === 'P' ? 'P' : 'L', target: w[3] || '' });
+  } else if (topic.startsWith(T + 'play/')) {           // the partner's notes: at once, lit
+    const id = topic.slice(T.length + 5);
+    if (!part || id !== partner) return;
+    const w = msg.trim().split(/\s+/);
+    for (let i = 0; i + 1 < w.length; i += 2) {
+      const k = /^[bpo]/.test(w[i + 1]) ? w[i + 1][0] : 'b', note = parseInt(w[i + 1].replace(/^[bpo]/, ''), 10);
+      if (!(note >= 24 && note <= 108)) continue;
+      sound(k, note);
+      light(note - 12, k, 'them');
+    }
+  }
 }
 function onAir() {
   if (mq) {                                         // off air: the presence emptied
+    allOff();
     mq.publish(T + 'here/' + ID, '', true);
     setTimeout(() => { mq.closed = true; try { mq.ws.close(); } catch (e) {} mq = null; setState('', 'off air'); }, 200);
     $('air').textContent = 'Go on air';
     return;
   }
   mq = new Mqtt(BROKER, 'cosmos-webplayer-' + ID, T + 'here/' + ID, setState, onMessage, () => {
-    listeners.clear();
-    mq.subscribe([T + 'here/+']);
-    mq.publish(T + 'here/' + ID, place() + ' P', true);
+    peers.clear(); partner = ''; lastPres = '';
+    mq.subscribe([T + 'here/+', T + 'play/+']);
+    presence();
   });
   $('air').textContent = 'Go off air';
 }
 $('air').addEventListener('click', onAir);
-for (const el of [$('lat'), $('lon')]) el.addEventListener('change', () => { if (mq && mq.ok) mq.publish(T + 'here/' + ID, place() + ' P', true); });
+for (const el of [$('lat'), $('lon')]) el.addEventListener('change', () => { lastPres = ''; presence(); });
 
 // the FM-1's keys: 27, F3 .. G5; a key's note goes out an octave up, as an FM-1 player's (cosmos/app.c: the key's
-// MIDI note + 12), so it lights the same key on the FM-1 that listens
+// MIDI note + 12), so it lights the same key on the FM-1 that hears it
 const FIRST_KEY = 53, NKEYS = 27;
-const sent = [];
-function play(key) {                                // a key: its note out, lit, and here if asked
-  const note = key + 12;
-  if (mq && mq.ok) mq.publish(T + 'play/' + ID, dayMs() + ' ' + note, false);
-  const k = keys.querySelector('[data-n="' + key + '"]');
-  if (k) { k.classList.add('on'); setTimeout(() => k.classList.remove('on'), 250); }
+const sent = [], held = new Set();
+function light(key, k, cls) {
+  const el = keys.querySelector('[data-n="' + key + '"]');
+  if (!el) return;
+  if (k === 'p') el.classList.add(cls);
+  else if (k === 'o') el.classList.remove(cls);
+  else { el.classList.add(cls); setTimeout(() => el.classList.remove(cls), 300); }
+}
+function send(k, note) { if (mq && mq.ok) mq.publish(T + 'play/' + ID, dayMs() + ' ' + k + note, false); }
+function down(key) {                                // a key: its part's note, out, lit, and here if asked
+  const note = key + 12, k = part === 1 ? 'p' : 'b';
+  if (k === 'p') { if (held.has(key)) return; held.add(key); }
+  send(k, note);
+  light(key, k, 'on');
+  sound(k, note);
   sent.push(NAMES[key % 12] + (Math.floor(key / 12) - 1));
   if (sent.length > 16) sent.shift();
   $('log').textContent = sent.join(' ');
-  if (ac) ping(note);
+}
+function up(key) {
+  if (!held.delete(key)) return;
+  send('o', key + 12);
+  light(key, 'o', 'on');
+  sound('o', key + 12);
+}
+function allOff() {                                 // every pad note let go (the part changed, off air)
+  for (const key of [...held]) up(key);
+  for (const v of voices.values()) v.stop();
+  voices.clear();
+  for (const el of keys.querySelectorAll('.them')) el.classList.remove('them');
 }
 
-// ---- by itself: a slow walk on a pentatonic scale, in phrases with rests, on the FM-1's keys only
+// ---- by itself: the bells a slow walk on a pentatonic scale, in phrases with rests; the pad long notes, held
 const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const PENTA = [0, 2, 4, 7, 9];
 let step = 5, root = 55, phrase = 0;
 const keyOf = st => root + 12 * Math.floor(st / 5) + PENTA[st % 5];
 function walk() {
-  if ($('auto').getAttribute('aria-pressed') === 'true' && mq && mq.ok) {
+  const on = $('auto').getAttribute('aria-pressed') === 'true' && mq && mq.ok;
+  if (on && part === 1) {                            // the pad: one or two notes held 2.5 to 5 s, then a breath
+    const a = [53, 55, 57, 60, 62][Math.floor(Math.random() * 5)], b = a + [7, 4, 3, 12][Math.floor(Math.random() * 4)];
+    const pick = Math.random() < 0.6 ? [a, b] : [a];
+    for (const k of pick) if (k < FIRST_KEY + NKEYS) down(k);
+    const len = 2500 + Math.random() * 2500;
+    setTimeout(() => { for (const k of pick) up(k); setTimeout(walk, 300 + Math.random() * 700); }, len);
+    return;
+  }
+  if (on) {
     if (phrase <= 0 && Math.random() < 0.35) { phrase = 4 + Math.floor(Math.random() * 6); setTimeout(walk, 1500 + Math.random() * 2000); return; }
     if (Math.random() < 0.04) root = [53, 55, 57, 60][Math.floor(Math.random() * 4)];
     step = Math.max(0, step + [-2, -1, -1, 1, 1, 2, 0][Math.floor(Math.random() * 7)]);
     while (keyOf(step) > FIRST_KEY + NKEYS - 1) step--;   // G5 at most
-    play(keyOf(step));
+    down(keyOf(step));
     phrase--;
   }
   setTimeout(walk, [300, 450, 450, 600, 900][Math.floor(Math.random() * 5)]);
@@ -276,21 +363,35 @@ const keys = $('keys');
     k.setAttribute('aria-label', NAMES[n % 12] + (Math.floor(n / 12) - 1));
     if (b) { const wi = whites.indexOf(n - 1); k.style.left = 'calc(' + (wi + 1) * W + '% - ' + W * 0.3 + '%)'; k.style.width = W * 0.6 + '%'; }
     else { k.style.left = whites.indexOf(n) * W + '%'; k.style.width = W + '%'; }
-    k.addEventListener('pointerdown', e => { e.preventDefault(); play(n); });
+    k.addEventListener('pointerdown', e => { e.preventDefault(); k.setPointerCapture(e.pointerId); down(n); });
+    for (const ev of ['pointerup', 'pointercancel']) k.addEventListener(ev, () => up(n));
     keys.appendChild(k);
   }
 })();
 
-// ---- hearing it here: a soft bell (the FM-1s play it in their own sky's voice)
+// ---- hearing it here: a soft bell, a soft pad (the FM-1s play them in their own sky's sounds)
 let ac = null;
-function ping(note) {
-  const t = ac.currentTime, f = 440 * 2 ** ((note - 69) / 12), o = ac.createOscillator(), g = ac.createGain();
-  o.frequency.value = f; o.type = 'sine';
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.15, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
-  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 1.7);
+const voices = new Map();                            // a pad note held: its voice
+function sound(k, note) {
+  if (!ac) return;
+  const t = ac.currentTime, f = 440 * 2 ** ((note - 69) / 12);
+  if (k === 'o') { const v = voices.get(note); if (v) { v.stop(); voices.delete(note); } return; }
+  const g = ac.createGain();
+  g.connect(ac.destination);
+  if (k === 'b') {
+    const o = ac.createOscillator();
+    o.frequency.value = f; o.type = 'sine'; o.connect(g);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.15, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+    o.start(t); o.stop(t + 1.7);
+    return;
+  }
+  const os = [0.996, 1.004].map(d => { const o = ac.createOscillator(); o.type = 'triangle'; o.frequency.value = f * d; o.connect(g); o.start(t); return o; });
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.07, t + 0.6);
+  if (voices.has(note)) voices.get(note).stop();
+  voices.set(note, { stop() { const e = ac.currentTime; g.gain.cancelScheduledValues(e); g.gain.setValueAtTime(g.gain.value, e); g.gain.linearRampToValueAtTime(0.0001, e + 1.2); for (const o of os) o.stop(e + 1.3); } });
 }
 $('hear').addEventListener('click', e => {
-  if (ac) { ac.close(); ac = null; e.target.setAttribute('aria-pressed', 'false'); return; }
+  if (ac) { for (const v of voices.values()) v.stop(); voices.clear(); ac.close(); ac = null; e.target.setAttribute('aria-pressed', 'false'); return; }
   ac = new (window.AudioContext || window.webkitAudioContext)();
   e.target.setAttribute('aria-pressed', 'true');
 });

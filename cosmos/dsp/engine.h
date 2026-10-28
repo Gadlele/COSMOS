@@ -74,3 +74,4 @@ void eng_load(uint32_t *main, uint32_t *pads, uint32_t *stars);   /* each part's
 uint32_t eng_bytes(void);                /* what eng_init took from the heap */
 void eng_note(float hz, float amp, float pan, int32_t voice, uint32_t delay_ms);   /* main loop: a star's note, at
                                          * pan -1..1, in a voice (-1: the moon's), after delay_ms (dropped if 16 wait) */
+void eng_pad_note(float hz, int on);     /* main loop: RADIO's pad, a single note held (on) or let go (hz 0: all) */

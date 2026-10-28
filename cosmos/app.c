@@ -16,8 +16,10 @@
  *   PRESET the drone's level, always (0 .. 100 %, in steps of 5)
  *   SEL    the next planet up (in EDIT any of the seven classical ones, the Sun and the Moon among them), or none
  *   LFO    the sky alone, and back      ARP the ARP screen, the arpeggio on; again, off and back
- *   FX     the RADIO page (radio.c, with WiFi): ALGO the role, a PLAYER (its keys play notes and go out) or a
- *          LISTENER (it hears one player, SAVE on its star in the players' constellation, in its own sky's voice)
+ *   FX     the RADIO page (radio.c, with WiFi): ALGO the role, a PLAYER (paired at random with another: one plays
+ *          the PAD, the other the BELLS, each hearing the other) or a LISTENER (it hears a pair, or one alone: SAVE
+ *          on its star in the players' constellation). All in this sky's own sounds; the sky itself silent, PLAY
+ *          asleep. Any other button leaves it (the role off) and does what it does
  *   GLO    the settings      PLAY the sky stopped or playing (stopping saves)      OCT- / OCT+ the octave
  *   MASTER the volume. The buttons that do something glow, the ones in use bright; the keys glow on the scale,
  *   bright on its root. Saving silences the sound for a moment: only stopping (PLAY) and leaving GLO save.
@@ -133,7 +135,8 @@ static struct {
     uint32_t splash_t0;                  /* the splash running since its first frame (plat_ms) */
     int splash_on;                       /* the splash: 1 still to start, 2 running, 0 over */
     uint32_t splash_btn;                 /* the buttons held at its start: only a new press cuts it */
-    /* RADIO COSMOS (FX, its page): a player's keys go out; a listener hears one player, in its own sky's voice */
+    /* RADIO COSMOS (FX, its page): a player's keys go out to its partner; a listener hears a pair; in this sky's
+     * own sounds */
     int radio;                           /* 0 off, 1 a player, 2 a listener */
     int r_task;                          /* its task asked for (radio_on): once WiFi is connected, not to take the
                                           * heap while it joins */
@@ -141,7 +144,13 @@ static struct {
     uint32_t r_target;                   /* a listener's player, its id hashed (0 none) */
     char r_target_id[6], r_target_place[14];
     int r_pick;                          /* the page's star SELECT is on */
-    uint32_t r_lit_at[NKEYS], r_lit_end[NKEYS];   /* the keys its notes light (plat_ms) */
+    uint32_t r_lit_at[NKEYS], r_lit_end[NKEYS];   /* the keys the bells light (plat_ms) */
+    uint32_t r_held, r_pad_lit;          /* the keys a player holds on the pad; the pad's notes heard, lit */
+    int r_jam;                           /* the part last played: radio_jam's, and its partner's first letter */
+    struct {
+        uint32_t at;                     /* plat_ms it plays (0: a free slot) */
+        uint8_t note, on;
+    } r_pend[12];                        /* a listener's pad notes, waiting their time */
 } ui = {.rnd = 0x2545F491u};
 
 static uint32_t unix_now(void) { return ui.clock_unix + (plat_ms() - ui.clock_ms) / 1000u; }
@@ -860,6 +869,31 @@ static void radio_note(uint8_t note, uint32_t delay_ms)
         ui.r_lit_end[k] = now + delay_ms + 350u;
     }
 }
+/* a pad note held (on) or let go, on a key's MIDI note, in delay_ms (its key lit while it sounds) */
+static void radio_pad(uint8_t note, int on, uint32_t delay_ms)
+{
+    int32_t k = (int32_t)note - 12 - FIRST_KEY_NOTE, i;
+    if (delay_ms) {
+        for (i = 0; i < 12; i++)
+            if (!ui.r_pend[i].at) {
+                ui.r_pend[i].at = (plat_ms() + delay_ms) | 1u;
+                ui.r_pend[i].note = note;
+                ui.r_pend[i].on = (uint8_t)on;
+                return;
+            }
+        if (on)
+            return;                      /* (full: a note let go now, not left held) */
+    }
+    eng_pad_note(440.0f * fm_exp2f(((float)note - 69.0f) / 12.0f), on);
+    if (k >= 0 && k < NKEYS)
+        ui.r_pad_lit = on ? ui.r_pad_lit | 1u << k : ui.r_pad_lit & ~(1u << k);
+}
+static void radio_hush(void)            /* every pad note let go */
+{
+    eng_pad_note(0.0f, 0);
+    ui.r_held = ui.r_pad_lit = 0;
+    memset(ui.r_pend, 0, sizeof ui.r_pend);
+}
 /* off (0), a player (1) or a listener (2) */
 static void radio_set(int role)
 {
@@ -888,14 +922,17 @@ static void radio_set(int role)
         dec2(put(dec2(where, set.lat100), " "), set.lon100);
         radio_on(role, ui.radio_id, where);
     }
+    radio_hush();
     ui.radio = role;
+    ui.r_jam = 0;
     app_say("RADIO", ROLE[role]);
 }
-/* each frame: the task once connected; a listener's notes, each 600 ms after its player played it */
+/* each frame: the task once connected; the partner's notes at once, a listener's each 600 ms after they were played */
 static void radio_tick(void)
 {
-    uint32_t sec, ms, t, now_t;
-    uint8_t note;
+    uint32_t sec, ms, t, now_t, now = plat_ms();
+    uint8_t kind, note;
+    int i;
     if (!ui.radio)
         return;
     if (set.offline) {
@@ -907,17 +944,40 @@ static void radio_tick(void)
         dec2(put(dec2(where, set.lat100), " "), set.lon100);
         ui.r_task = radio_on(ui.radio, ui.radio_id, where) == 0;
     }
+    if (ui.radio == 1) {                 /* a new part, or a new partner: the pad's notes let go */
+        char pid[6] = "";
+        int j = radio_jam(pid);
+        j = j | (uint8_t)pid[0] << 2 | (uint8_t)pid[1] << 10;
+        if (j != ui.r_jam) {
+            radio_hush();
+            ui.r_jam = j;
+        }
+    }
+    for (i = 0; i < 12; i++)             /* a listener's pad notes, on time */
+        if (ui.r_pend[i].at && (int32_t)(now - ui.r_pend[i].at) >= 0) {
+            ui.r_pend[i].at = 0;
+            radio_pad(ui.r_pend[i].note, ui.r_pend[i].on, 0);
+        }
     if (!radio_clock(&sec, &ms))
         return;
     now_t = (sec % 86400u) * 1000u + ms;
-    while (radio_heard(&t, &note)) {     /* (a note far too late: dropped) */
+    while (radio_heard(&t, &kind, &note)) {
         int32_t late = (int32_t)now_t - (int32_t)t;
+        uint32_t d;
         if (late < -43200000)
             late += 86400000;            /* across midnight */
         else if (late > 43200000)
             late -= 86400000;
-        if (ui.radio == 2 && late <= (int32_t)RADIO_DELAY_MS + 1500)
-            radio_note(note, late < (int32_t)RADIO_DELAY_MS ? RADIO_DELAY_MS - (uint32_t)late : 0u);
+        if (ui.radio == 1)               /* the partner: at once */
+            d = 0;
+        else if (late <= (int32_t)RADIO_DELAY_MS + 1500 || kind == 'o')   /* (far too late: dropped; but let go) */
+            d = late < (int32_t)RADIO_DELAY_MS ? RADIO_DELAY_MS - (uint32_t)late : 0u;
+        else
+            continue;
+        if (kind == 'b')
+            radio_note(note, d);
+        else
+            radio_pad(note, kind == 'p', d);
     }
 }
 
@@ -982,22 +1042,6 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
         put(put_int(v, seen), seen == 1 ? " PLANET IN SIGHT" : " PLANETS IN SIGHT");
         copy(lines[8], seen ? v : "NO PLANET IN SIGHT", 32);
         col[8] = C_MID;
-    }
-    if (ui.radio) {                      /* RADIO: the role, whom it hears, who hears it */
-        int st = ui.r_task ? radio_state() : RADIO_NO_WIFI;
-        uint32_t s0, ms0;
-        if (st == RADIO_LIVE && radio_clock(&s0, &ms0)) {
-            if (ui.radio == 1)
-                put(put_int(put(lines[8], "RADIO PLAYER  "), radio_listeners()), " LISTENING");
-            else if (ui.r_target)
-                put(put(lines[8], "RADIO LISTENING "), ui.r_target_id);
-            else
-                copy(lines[8], "RADIO: PICK A STAR (FX)", 32);
-        } else {
-            copy(lines[8], st == RADIO_LIVE ? "RADIO: SETTING THE CLOCK" : st == RADIO_NO_WIFI ? "RADIO: WAITING FOR WIFI"
-                         : st == RADIO_RETRY && radio_why()[0] ? radio_why() : "RADIO: TUNING IN", 32);
-        }
-        col[8] = ui.radio == 1 ? C_PLAYER : C_RADIO;
     }
     if (plat_ms() < ui.msg_until) {
         line2(lines[9], ui.msg[0], ui.msg[1]);
@@ -1137,15 +1181,6 @@ static void sky_frame(void)
                 }
                 cv_text(8, ty, &FONT_S, lines[i], scale(col[i], ui.alpha));
             }
-        if (ui.radio == 1 || (ui.radio == 2 && ui.r_target)) {
-            uint16_t c = ui.radio == 1 ? C_PLAYER : C_RADIO;   /* RADIO: violet, a player; blue, listening */
-            cv_rect(0, 0, 3, 48, c);
-            cv_rect(237, 0, 3, 48, c);
-            if (s == 0)
-                cv_rect(0, 0, 240, 3, c);
-            if (s == 4)
-                cv_rect(0, 45, 240, 3, c);
-        }
         cv_blit(0, (uint32_t)y0);
     }
 }
@@ -1289,11 +1324,11 @@ static void settings_change(int32_t step, int big)
 
 /* ------------------------------------------------------------- RADIO (FX) --- */
 /* the players on air as a constellation: each a star where it is on the Earth (the map fitted to them), the whole
- * turning slowly and breathing, lines between neighbours; a star flashes when its player plays. SELECT goes from
- * star to star (east to west), SAVE listens to it (again: stops), ALGO the role */
+ * turning slowly and breathing, a line between the two of a pair; a star flashes when its player plays. SELECT goes
+ * from star to star (east to west), SAVE listens to its pair (again: stops), ALGO the role */
 #define RP_MAX 24
 typedef struct {
-    uint32_t h, noted;
+    uint32_t h, noted, mate;             /* (mate: its partner hashed, 0 none) */
     char id[6], place[14];
     float lat, lon;
 } rp_t;
@@ -1312,10 +1347,17 @@ static float place_num(const char *s, int field)   /* "41.90 12.50": the field't
             v += f * (float)(*s - '0');
     return v * sg;
 }
+static int same_id(const char *a, const char *b)   /* two ids, the same (5 characters) */
+{
+    int i;
+    for (i = 0; i < 5 && a[i] == b[i] && a[i]; i++)
+        ;
+    return i == 5 || (a[i] == b[i] && i);
+}
 static int radio_players(rp_t *p)        /* the players on air, west to east */
 {
     int n = 0, i, j;
-    while (n < RP_MAX && radio_player(n, &p[n].h, p[n].id, p[n].place, &p[n].noted)) {
+    while (n < RP_MAX && radio_player(n, &p[n].h, p[n].id, p[n].place, &p[n].noted, &p[n].mate)) {
         p[n].lat = place_num(p[n].place, 0);
         p[n].lon = place_num(p[n].place, 1);
         n++;
@@ -1341,7 +1383,7 @@ static void radio_page_input(uint32_t down, int32_t es, int32_t ea)
             app_say("RADIO", "ALGO: BE A LISTENER");
         else if (!n)
             app_say("RADIO", "NO PLAYER ON AIR");
-        else if (p[ui.r_pick % n].h == ui.r_target) {   /* again: stop */
+        else if (p[ui.r_pick % n].h == ui.r_target || (ui.r_target && p[ui.r_pick % n].mate == ui.r_target)) {   /* again: stop */
             ui.r_target = 0;
             radio_listen(0, 0);
             app_say("RADIO", "STOPPED");
@@ -1370,7 +1412,8 @@ static void radio_page(void)
     int32_t px[RP_MAX + 1], py[RP_MAX + 1], n = radio_players(p), m, i, s, st = ui.r_task ? radio_state() : RADIO_NO_WIFI;
     float t = (float)plat_ms() / 1000.0f, minx = 999.0f, maxx = -999.0f, miny = 999.0f, maxy = -999.0f, span, cx, cy;
     float th = t * (FM_TWO_PI / 240.0f), r = 62.0f * (1.0f + 0.03f * fm_sinf(t * 0.4f));
-    char a[32], b[32];
+    char a[32], b[32], pid[6] = "";
+    int jam = ui.radio == 1 ? radio_jam(pid) : 0;
     m = n + (ui.radio == 1);             /* a player: itself too, violet */
     for (i = 0; i < m; i++) {
         float lo = i < n ? p[i].lon : (float)set.lon100 / 100.0f, la = i < n ? p[i].lat : (float)set.lat100 / 100.0f;
@@ -1391,10 +1434,19 @@ static void radio_page(void)
     for (s = 0; s < 5; s++) {
         int32_t y0 = s * 48;
         cv_begin(240, 48, C_BLACK);
-        for (i = 0; i + 1 < n; i++) {    /* the lines between neighbours, faint */
-            int32_t k, d = (int32_t)fm_maxf(fm_fabsf((float)(px[i + 1] - px[i])), fm_fabsf((float)(py[i + 1] - py[i])));
+        for (i = 0; i < n; i++) {        /* a line between the two of a pair (this one and its partner: violet) */
+            int32_t k, j, d;
+            uint16_t c = grey(70);
+            for (j = 0; j < m; j++)
+                if (j < n ? p[i].mate && p[j].h == p[i].mate && j > i : jam && same_id(p[i].id, pid))
+                    break;
+            if (j == m)
+                continue;
+            if (j >= n)
+                c = C_PLAYER;
+            d = (int32_t)fm_maxf(fm_fabsf((float)(px[j] - px[i])), fm_fabsf((float)(py[j] - py[i])));
             for (k = 2; k < d - 2; k += 2)
-                cv_pset(px[i] + (px[i + 1] - px[i]) * k / d, py[i] + (py[i + 1] - py[i]) * k / d - y0, grey(55));
+                cv_pset(px[i] + (px[j] - px[i]) * k / d, py[i] + (py[j] - py[i]) * k / d - y0, c);
         }
         for (i = 0; i < m; i++) {
             int32_t x = px[i], y = py[i] - y0, flash = i < n && p[i].noted < 300u;
@@ -1404,8 +1456,12 @@ static void radio_page(void)
             cv_rect(x - 1, y - 1, flash || i >= n ? 3 : 2, flash || i >= n ? 3 : 2, c);
             if (flash)
                 star_ring(x, py[i], 4, grey(120), y0);
-            if (i < n && p[i].h == ui.r_target)
-                star_ring(x, py[i], 10, C_RADIO, y0);
+            if (i < n && ui.r_target && (p[i].h == ui.r_target || p[i].mate == ui.r_target))
+                star_ring(x, py[i], 10, C_RADIO, y0);   /* the pair heard */
+            if (i < n && jam && same_id(p[i].id, pid)) {   /* the partner */
+                star_ring(x, py[i], 6, C_PLAYER, y0);
+                cv_text(x - text_w(&FONT_S, pid) / 2, py[i] - 20 - y0, &FONT_S, pid, C_PLAYER);   /* (over it: YOU under) */
+            }
             if (i < n && i == ui.r_pick && ui.radio == 2) {
                 star_ring(x, py[i], 7, C_TXT, y0);
                 cv_text(x - text_w(&FONT_S, p[i].id) / 2, py[i] + 10 - y0, &FONT_S, p[i].id, C_MID);
@@ -1421,17 +1477,29 @@ static void radio_page(void)
         cv_text(8, 26 - y0, &FONT_S, "ROLE", C_MID);
         cv_text(232 - text_w(&FONT_S, ROLE[ui.radio]), 26 - y0, &FONT_S, ROLE[ui.radio],
                 ui.radio == 1 ? C_PLAYER : ui.radio == 2 ? C_RADIO : C_MID);
-        if (ui.radio == 1)
-            put(put_int(put(a, "YOU PLAY  "), radio_listeners()), " LISTENING");
+        if (ui.radio == 1 && jam)
+            put(put(a, jam == 1 ? "YOU PAD  WITH " : "YOU BELLS  WITH "), pid);
+        else if (ui.radio == 1)
+            copy(a, "WAITING FOR A PARTNER", sizeof a);
         else if (ui.radio == 2 && !n)
             copy(a, "NO PLAYER ON AIR", sizeof a);
-        else if (ui.radio == 2)
-            put(put(put(a, p[ui.r_pick].id), " "), p[ui.r_pick].place);
-        else
+        else if (ui.radio == 2) {
+            const char *mid = "";
+            for (i = 0; i < n; i++)
+                if (p[ui.r_pick].mate && p[i].h == p[ui.r_pick].mate)
+                    mid = p[i].id;
+            if (mid[0])
+                put(put(put(a, p[ui.r_pick].id), " & "), mid);
+            else
+                put(put(put(a, p[ui.r_pick].id), " "), p[ui.r_pick].place);
+        } else
             copy(a, "ALGO: PLAYER OR LISTENER", sizeof a);
         cv_text(8, 200 - y0, &FONT_S, a, ui.radio == 1 ? C_PLAYER : C_TXT);
-        copy(b, ui.radio == 2 ? (n && p[ui.r_pick].h == ui.r_target ? "SAVE STOP  SELECT STAR" : "SAVE LISTEN  SELECT STAR")
-                              : ui.radio == 1 ? "THE KEYS GO OUT  ALGO ROLE" : "ALGO ROLE  FX BACK", sizeof b);
+        if (ui.radio == 1)
+            put(put_int(put(b, jam == 1 ? "HOLD THE KEYS  " : "THE KEYS RING  "), radio_listeners()), " LISTEN");
+        else
+            copy(b, ui.radio == 2 ? (n && ui.r_target && (p[ui.r_pick].h == ui.r_target || p[ui.r_pick].mate == ui.r_target)
+                                     ? "SAVE STOP  SELECT STAR" : "SAVE LISTEN  SELECT STAR") : "ALGO ROLE  FX BACK", sizeof b);
         cv_text(8, 218 - y0, &FONT_S, b, C_LOW);
         cv_blit(0, (uint32_t)y0);
     }
@@ -1627,7 +1695,7 @@ static void arp_tick(void)
     uint32_t now = plat_ms(), x = now % SWEEP_MS * 240u / SWEEP_MS, from = ui.sweep_x;
     int32_t i, best[2] = {-1, -1};
     ui.sweep_x = x;
-    if (!set.arp || !sky.on || ui.splash_on)
+    if (!set.arp || !sky.on || ui.splash_on || ui.radio)
         return;
     if (sky.rhythm == R_STARGATE) {      /* the sequence: each sixteenth (112 BPM) the star nearest the line */
         uint32_t k = now / SEQ_STEP_MS;
@@ -1717,7 +1785,7 @@ static void lights(void)
         db = nav | 1u << B_SAVE | 1u << B_PLAY;
         bb = 1u << B_ENV | (ui.radio ? 1u << B_FX : 0u);
     } else if (ui.screen == 4) {
-        db = nav | 1u << B_PLAY | 1u << B_OCTDN | 1u << B_OCTUP | (ui.radio == 2 ? 1u << B_SAVE : 0u);
+        db = nav | (ui.radio ? 0u : 1u << B_PLAY) | 1u << B_OCTDN | 1u << B_OCTUP | (ui.radio == 2 ? 1u << B_SAVE : 0u);
         bb = 1u << B_FX | (ui.radio == 2 && ui.r_target ? 1u << B_SAVE : 0u);
     } else {
         db = 1u << B_HOME | 1u << B_EDIT | 1u << B_SEL | 1u << B_GLO | 1u << B_LFO | 1u << B_ARP | 1u << B_PLAY | 1u << B_FX
@@ -1744,8 +1812,9 @@ static void lights(void)
                 bk |= 1u << k;
         }
     }
-    if (ui.radio) {                      /* RADIO: the keys the bells ring, bright */
+    if (ui.radio) {                      /* RADIO: the keys the bells ring, the pad's held, bright */
         uint32_t now = plat_ms();
+        bk |= ui.r_held | ui.r_pad_lit;
         for (k = 0; k < NKEYS; k++)
             if ((int32_t)(now - ui.r_lit_at[k]) >= 0 && (int32_t)(now - ui.r_lit_end[k]) < 0)
                 bk |= 1u << k;
@@ -1762,6 +1831,8 @@ static void lights(void)
 /* ------------------------------------------------------------------- input --- */
 static void to_screen(int sc)
 {
+    if (ui.screen == 4 && sc != 4 && ui.radio)   /* leaving the RADIO: off, the sky plays again */
+        radio_set(0);
     if ((ui.screen == 1 || ui.screen == 2) && sc != ui.screen && ui.dirty) {
         save();
         ui.net_try = 0;                  /* the place may have changed: the weather again */
@@ -1773,11 +1844,14 @@ static void to_screen(int sc)
 static void input(void)
 {
     uint32_t btn = plat_buttons(), down = btn & ~ui.btn, keys = plat_keys(), kdown = keys & ~ui.keys, now = plat_ms();
+    uint32_t kup = ui.keys & ~keys;
     int32_t e1 = plat_enc(EN_K1), e2 = plat_enc(EN_K2), e3 = plat_enc(EN_K3), e4 = plat_enc(EN_K4);
     int32_t ea = plat_enc(EN_ALGO), ep = plat_enc(EN_PRESET), es = plat_enc(EN_SELECT);
     int k;
     ui.btn = btn;
     ui.keys = keys;
+    if (ui.screen == 4 && ui.radio)      /* RADIO on: PLAY asleep */
+        down &= ~(1u << B_PLAY);
     if (down || (kdown && !ui.view_sky) || e1 || e2 || e3 || e4 || ea || ep || es)   /* a new touch (a held button is
                                           * not one; on the sky alone, LFO or ARP, the keys only play) */
         ui.touched = now;
@@ -1799,6 +1873,8 @@ static void input(void)
         int wifi = ui.screen == 2 || ui.screen == 3;
         if (ui.screen == 3)
             nav &= ~(1u << B_HOME | 1u << B_SEL);
+        if (ui.screen == 4)              /* RADIO's: any button but SAVE leaves it (the role off) */
+            nav = ~(1u << B_SAVE | 1u << B_PLAY);
         if ((wifi || ui.screen == 4) && (down & nav)) {
             to_screen(0);
             es = ea = 0;
@@ -1910,17 +1986,30 @@ static void input(void)
         if (!sky.on)                     /* stopped: a quiet moment to save (saving silences the sound) */
             save();
     }
-    if (ui.radio == 1) {                 /* RADIO, a player: the keys play notes, and they go out (heard 600 ms on) */
+    if (ui.radio == 1) {                 /* RADIO, a player: the keys play its part's notes, and they go out */
         uint32_t t = day_ms();
-        for (k = 0; k < NKEYS; k++)
+        char pid[6];
+        int pad = radio_jam(pid) == 1;
+        for (k = 0; k < NKEYS; k++) {
+            uint8_t note = (uint8_t)(FIRST_KEY_NOTE + k + 12);
             if (kdown >> k & 1u) {
-                uint8_t note = (uint8_t)(FIRST_KEY_NOTE + k + 12);
-                radio_note(note, 0);
+                if (pad) {               /* the pad: held while the key is */
+                    radio_pad(note, 1, 0);
+                    ui.r_held |= 1u << k;
+                } else {
+                    radio_note(note, 0);
+                }
                 if (t)
-                    radio_play(t, note);
+                    radio_play(t, pad ? 'p' : 'b', note);
+            } else if ((kup & ui.r_held) >> k & 1u) {
+                radio_pad(note, 0, 0);
+                ui.r_held &= ~(1u << k);
+                if (t)
+                    radio_play(t, 'o', note);
             }
+        }
     }
-    for (k = 0; k < NKEYS && ui.radio != 1; k++)   /* (a player's keys are its notes) */
+    for (k = 0; k < NKEYS && !ui.radio; k++)   /* (in the RADIO the keys are its notes) */
         if (keys >> k & 1u) {            /* a key's chord: held, and 10 s after */
             if (sky.planet == PL_NONE) {
                 if (kdown >> k & 1u) {   /* its note the new root */
@@ -1993,7 +2082,15 @@ void app_frame(void)
                                                                          * plays */
     sky.drone_on[1] = sky.drone_on[0];
     sky.drone_level = (float)set.drone / 20.0f;
-    eng_sky(&sky);
+    if (ui.radio) {                      /* RADIO: the sky silent, its sounds the radio's */
+        sky_t q = sky;
+        q.drone_on[0] = q.drone_on[1] = 0;
+        q.rhythm = R_NONE;
+        q.on = 1;
+        eng_sky(&q);
+    } else {
+        eng_sky(&sky);
+    }
     arp_tick();
     lights();
     {   /* the readings: always, but in the sky alone (LFO): there in fast after a touch, held, out slowly */
@@ -2053,6 +2150,7 @@ int net_busy(void) { return 0; }
 const net_res_t *net_result(void) { return &host_res; }
 /* RADIO: on the computer five players on air (one plays a slow arpeggio when listened to); in the browser none */
 static int host_radio;
+static uint32_t host_on_at;
 static uint32_t host_target;
 int radio_on(int role, const char *id, const char *where)
 {
@@ -2060,6 +2158,8 @@ int radio_on(int role, const char *id, const char *where)
 #ifdef PLAT_WEB
     return role ? -1 : 0;
 #else
+    if (role && !host_radio)
+        host_on_at = plat_ms();
     host_radio = role;
     return 0;
 #endif
@@ -2073,7 +2173,8 @@ int radio_clock(uint32_t *sec, uint32_t *ms)
     *ms = t % 1000u;
     return host_radio;
 }
-int radio_player(int i, uint32_t *h, char *id, char *place, uint32_t *noted_ms)
+/* (on the computer: NYCBB and TKYCC a pair; a player is paired with OSLOA after 2 s, and plays the PAD) */
+int radio_player(int i, uint32_t *h, char *id, char *place, uint32_t *noted_ms, uint32_t *mate)
 {
     static const char *const ID[5] = {"OSLOA", "NYCBB", "TKYCC", "SYDDD", "PARIS"};
     static const char *const PL[5] = {"59.91 10.75", "40.71 -74.00", "35.68 139.69", "-33.87 151.21", "48.86 2.35"};   /* (14 B at most) */
@@ -2083,23 +2184,43 @@ int radio_player(int i, uint32_t *h, char *id, char *place, uint32_t *noted_ms)
     copy(id, ID[i], 6);
     copy(place, PL[i], 14);
     *noted_ms = (plat_ms() + (uint32_t)i * 700u) % 2300u;   /* now and then a note */
+    *mate = i == 1 ? 1002u : i == 2 ? 1001u : 0u;
+    return 1;
+}
+int radio_jam(char *partner_id)
+{
+    if (host_radio != 1 || plat_ms() - host_on_at < 2000u)
+        return 0;
+    copy(partner_id, "OSLOA", 6);
     return 1;
 }
 void radio_listen(uint32_t h, const char *id) { (void)id, host_target = h; }
 int radio_listeners(void) { return 2; }
-void radio_play(uint32_t t, uint8_t note) { (void)t, (void)note; }
-int radio_heard(uint32_t *t, uint8_t *note)
+void radio_play(uint32_t t, uint8_t kind, uint8_t note) { (void)t, (void)kind, (void)note; }
+/* heard: the partner's bells (a slow arpeggio); a listener's pair, the bells and a pad note held 3 s in 4 */
+int radio_heard(uint32_t *t, uint8_t *kind, uint8_t *note)
 {
-    static uint32_t next;
+    static uint32_t next, pad_next;
+    static uint8_t pad_on;
     static const uint8_t ARP[6] = {69, 72, 76, 81, 76, 72};
     uint32_t s, ms, now;
-    if (!host_radio || !host_target || !radio_clock(&s, &ms))
+    char pid[6];
+    if (!host_radio || !radio_clock(&s, &ms) || (host_radio == 2 ? !host_target : !radio_jam(pid)))
         return 0;
     now = (s % 86400u) * 1000u + ms;
+    if (host_radio == 2 && (host_target == 1001u || host_target == 1002u) && (now >= pad_next || pad_next - now > 8000u)) {
+        pad_on = !pad_on;
+        pad_next = now + (pad_on ? 3000u : 1000u);
+        *t = now;
+        *kind = pad_on ? 'p' : 'o';
+        *note = 57;
+        return 1;
+    }
     if (now < next && next - now < 2000u)
         return 0;
     next = now + 450u;
     *t = now;
+    *kind = 'b';
     *note = ARP[now / 450u % 6u];
     return 1;
 }
