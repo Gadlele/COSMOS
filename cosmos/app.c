@@ -1355,7 +1355,7 @@ static void radio_page_input(uint32_t down, int32_t es, int32_t ea)
         }
     }
 }
-static void ring(int32_t cx, int32_t cy, int32_t r, uint16_t c, int32_t y0)
+static void star_ring(int32_t cx, int32_t cy, int32_t r, uint16_t c, int32_t y0)
 {
     int32_t k;
     for (k = 0; k < 24; k++) {
@@ -1403,11 +1403,11 @@ static void radio_page(void)
                 continue;
             cv_rect(x - 1, y - 1, flash || i >= n ? 3 : 2, flash || i >= n ? 3 : 2, c);
             if (flash)
-                ring(x, py[i], 4, grey(120), y0);
+                star_ring(x, py[i], 4, grey(120), y0);
             if (i < n && p[i].h == ui.r_target)
-                ring(x, py[i], 10, C_RADIO, y0);
+                star_ring(x, py[i], 10, C_RADIO, y0);
             if (i < n && i == ui.r_pick && ui.radio == 2) {
-                ring(x, py[i], 7, C_TXT, y0);
+                star_ring(x, py[i], 7, C_TXT, y0);
                 cv_text(x - text_w(&FONT_S, p[i].id) / 2, py[i] + 10 - y0, &FONT_S, p[i].id, C_MID);
             }
             if (i >= n)
