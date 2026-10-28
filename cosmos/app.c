@@ -1389,7 +1389,7 @@ static void wifi_page(void)
         wrow(13, "", C_TXT, 0, 0);
     } else {
         wrow(12, "SELECT PICK  SAVE JOIN", C_LOW, 0, 0);
-        wrow(13, set.offline ? "FX LOOK  REC WIFI ON" : "FX LOOK  REC OFF  PLAY NOW", C_LOW, 0, 0);
+        wrow(13, set.offline ? "SEQ LOOK  REC WIFI ON" : "SEQ LOOK  REC OFF  PLAY NOW", C_LOW, 0, 0);
     }
 }
 
@@ -1450,7 +1450,7 @@ static int wifi_page_input(uint32_t down, int32_t es, int32_t ea)
             while (ui.pick > 0 && !plat_wifi_found(ui.pick, 0, 0, 0))
                 ui.pick--;
         }
-        if (down >> B_FX & 1u && plat_wifi_scan() != 0)
+        if (down >> B_SEQ & 1u && plat_wifi_scan() != 0)   /* (FX is RADIO's, on every page) */
             app_say("WIFI IS OFF", "REC TURNS IT ON");
         if (down >> B_REC & 1u) {
             set.offline = !set.offline;
@@ -1602,15 +1602,17 @@ static void lights(void)
 {
     uint32_t bb = 0, db, bk = 0, dk = 0, k;
     int32_t root_pc = ((int32_t)(69.0f + 12.0f * fm_log2f(sky.root_hz / 440.0f) + 0.5f) % 12 + 12) % 12;
+    uint32_t nav = 1u << B_HOME | 1u << B_EDIT | 1u << B_GLO | 1u << B_ENV | 1u << B_LFO | 1u << B_ARP | 1u << B_FX
+                   | 1u << B_SEL;        /* the page buttons: they work everywhere */
     if (ui.screen == 1) {
-        db = 1u << B_GLO | 1u << B_HOME;
-        bb = 1u << B_GLO;
+        db = nav | 1u << B_PLAY | 1u << B_OCTDN | 1u << B_OCTUP;
+        bb = 1u << B_GLO | (ui.radio ? 1u << B_FX : 0u);
     } else if (ui.screen == 2) {
-        db = 1u << B_ENV | 1u << B_SAVE | 1u << B_FX | 1u << B_REC | 1u << B_PLAY;
-        bb = 1u << B_ENV | (set.offline ? 0u : 1u << B_REC);
+        db = nav | 1u << B_SAVE | 1u << B_SEQ | 1u << B_REC | 1u << B_PLAY;
+        bb = 1u << B_ENV | (set.offline ? 0u : 1u << B_REC) | (ui.radio ? 1u << B_FX : 0u);
     } else if (ui.screen == 3) {
-        db = 1u << B_ENV | 1u << B_SAVE | 1u << B_SEL | 1u << B_PLAY | 1u << B_HOME;
-        bb = 1u << B_ENV;
+        db = nav | 1u << B_SAVE | 1u << B_PLAY;
+        bb = 1u << B_ENV | (ui.radio ? 1u << B_FX : 0u);
     } else {
         db = 1u << B_HOME | 1u << B_EDIT | 1u << B_SEL | 1u << B_GLO | 1u << B_LFO | 1u << B_ARP | 1u << B_PLAY | 1u << B_FX
              | 1u << B_OCTDN | 1u << B_OCTUP | 1u << B_ENV;
@@ -1675,8 +1677,21 @@ static void input(void)
         }
         return;
     }
-    if (ui.screen >= 2 && wifi_page_input(down, es, ea))
-        return;
+    {   /* the page buttons work from any page: on WiFi's, they leave it and do what they do (the password's HOME and
+         * SEL are its DELETE and BACK) */
+        uint32_t nav = 1u << B_HOME | 1u << B_EDIT | 1u << B_GLO | 1u << B_LFO | 1u << B_ARP | 1u << B_FX | 1u << B_SEL;
+        if (ui.screen == 3)
+            nav &= ~(1u << B_HOME | 1u << B_SEL);
+        if (ui.screen >= 2 && (down & nav)) {
+            to_screen(0);
+            es = ea = 0;
+        } else if (ui.screen >= 2 && wifi_page_input(down, es, ea)) {
+            return;
+        } else if (ui.screen == 1 && (down & (1u << B_LFO | 1u << B_ARP | 1u << B_FX | 1u << B_SEL))) {
+            to_screen(0);                /* the settings: the sky's buttons go back to it (saving) and act */
+            es = ea = ep = 0;
+        }
+    }
     if (down >> B_GLO & 1u) {            /* the settings, and back */
         to_screen(ui.screen == 1 ? 0 : 1);
         return;
@@ -1711,7 +1726,10 @@ static void input(void)
             settings_change(ea > 0 ? 1 : -1, 0);
         if (ep)
             settings_change(ep > 0 ? 1 : -1, 1);
-        return;
+        if (!(down & (1u << B_PLAY | 1u << B_OCTDN | 1u << B_OCTUP)))
+            return;                      /* (PLAY and the octave work here too) */
+        es = ea = ep = e1 = e2 = e3 = e4 = 0;
+        kdown = keys = 0;
     }
     if (ep) {                            /* PRESETS: the drone's level, always */
         char v[8];
