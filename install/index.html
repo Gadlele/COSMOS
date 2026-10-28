@@ -9,7 +9,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Install COSMOS</title>
-<meta name="description" content="Install COSMOS 0.22 on the M-VAVE FM-1 from the browser, over USB.">
+<meta name="description" content="Install COSMOS 0.23 on the M-VAVE FM-1 from the browser, over USB.">
 <link rel="icon" href="../img/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -111,7 +111,7 @@ footer p { margin: 0 0 10px; } footer a { color: var(--mid); }
   <div class="hero">
     <img src="../img/cosmos-sky.png" alt="The sky over Rome on the FM-1's screen">
     <div>
-      <h1>Install COSMOS <span>0.22</span></h1>
+      <h1>Install COSMOS <span>0.23</span></h1>
       <p>A drone synth for the M-VAVE FM-1, played by the real sky and weather. Installs from this page over USB, in
         Chrome or Edge. No extra hardware.</p>
     </div>
@@ -159,7 +159,7 @@ footer p { margin: 0 0 10px; } footer a { color: var(--mid); }
   <section class="step">
     <h2><span class="n">4</span>Install</h2>
     <div class="card main">
-      <h3>Install COSMOS 0.22</h3>
+      <h3>Install COSMOS 0.23</h3>
       <p class="small">The FM-1 checks the package, switches to update mode, writes and restarts; then this page asks
         it what it runs, to be sure. Its screen shows UPDATING or stays dark while it writes.</p>
       <div id="mbootopt" hidden>
@@ -168,7 +168,7 @@ footer p { margin: 0 0 10px; } footer a { color: var(--mid); }
           <span data-t="mbootwhy"></span>
           <a href="https://github.com/jvitkauskas/m-bootloader" target="_blank" rel="noopener">github.com/jvitkauskas/m-bootloader</a></p>
       </div>
-      <p><button type="button" id="go" disabled>Install COSMOS 0.22</button></p>
+      <p><button type="button" id="go" disabled>Install COSMOS 0.23</button></p>
       <p id="ticks" role="status"></p>
       <label class="sr" for="bar" data-t="progress">Progress</label>
       <progress id="bar" max="100" value="0"></progress>
@@ -222,7 +222,7 @@ footer p { margin: 0 0 10px; } footer a { color: var(--mid); }
   </div>
 
   <footer>
-    <p>COSMOS 0.22 by Gadlele is free software under the GPL-3.0 or later, with <b>no warranty</b>. Source:
+    <p>COSMOS 0.23 by Gadlele is free software under the GPL-3.0 or later, with <b>no warranty</b>. Source:
       <a href="https://github.com/Gadlele/COSMOS">github.com/Gadlele/COSMOS</a>.</p>
     <p>Built on fm1-base and felucca-bsp, from Felucca by Leo Kuroshita (@kurogedelic),
       <a href="https://hugelton.com" target="_blank" rel="noopener">Hügelton Instruments</a>; this installer's
@@ -864,7 +864,7 @@ const log = (t) => {
   if (atEnd) el.scrollTop = el.scrollHeight;
 };
 let image = null, boot = null;
-const meta = {"version": "0.22", "product": "FM-1_72002200", "pkg": "../firmware/cosmos-0.22.fwsc", "backup": false, "boot": {"pkg": "../firmware/m-bootloader-1.2.fwsc", "version": "1.2", "sha256": "0e89141f52d1f2d62198d4f69147a2c15c8360806e64d48002990a6fdab6d6dd"}};
+const meta = {"version": "0.23", "product": "FM-1_72002300", "pkg": "../firmware/cosmos-0.23.fwsc", "backup": false, "boot": {"pkg": "../firmware/m-bootloader-1.2.fwsc", "version": "1.2", "sha256": "0e89141f52d1f2d62198d4f69147a2c15c8360806e64d48002990a6fdab6d6dd"}};
 /* the firmware's own steps around an install (its site's install_app script, or none): before(midi, ui) runs before
    anything is written, may ask (ui.ask) and returns its state, or false to stop there; after(midi, ui, state) once
    the new firmware has started (it waits for it itself). A failure in after is said, the install stays done */
