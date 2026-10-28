@@ -812,7 +812,7 @@ static char *note_name(char *d, float hz)
 /* the readings, line by line, with their colours */
 /* ---- RADIO COSMOS */
 #define C_RADIO RGB(150, 190, 255)
-#define C_PLAYER RGB(110, 230, 140)
+#define C_PLAYER RGB(185, 140, 255)
 #define RADIO_DELAY_MS 600u              /* a player's notes, everywhere this late: the network's jitter under it */
 
 /* this FM-1's id: its chip's ID hashed (FNV-1a) into 5 characters, the same every time */
@@ -1138,7 +1138,7 @@ static void sky_frame(void)
                 cv_text(8, ty, &FONT_S, lines[i], scale(col[i], ui.alpha));
             }
         if (ui.radio == 1 || (ui.radio == 2 && ui.r_target)) {
-            uint16_t c = ui.radio == 1 ? C_PLAYER : C_RADIO;   /* RADIO: green, a player; blue, listening */
+            uint16_t c = ui.radio == 1 ? C_PLAYER : C_RADIO;   /* RADIO: violet, a player; blue, listening */
             cv_rect(0, 0, 3, 48, c);
             cv_rect(237, 0, 3, 48, c);
             if (s == 0)
@@ -1371,7 +1371,7 @@ static void radio_page(void)
     float t = (float)plat_ms() / 1000.0f, minx = 999.0f, maxx = -999.0f, miny = 999.0f, maxy = -999.0f, span, cx, cy;
     float th = t * (FM_TWO_PI / 240.0f), r = 62.0f * (1.0f + 0.03f * fm_sinf(t * 0.4f));
     char a[32], b[32];
-    m = n + (ui.radio == 1);             /* a player: itself too, green */
+    m = n + (ui.radio == 1);             /* a player: itself too, violet */
     for (i = 0; i < m; i++) {
         float lo = i < n ? p[i].lon : (float)set.lon100 / 100.0f, la = i < n ? p[i].lat : (float)set.lat100 / 100.0f;
         minx = fm_minf(minx, lo), maxx = fm_maxf(maxx, lo), miny = fm_minf(miny, la), maxy = fm_maxf(maxy, la);

@@ -149,23 +149,30 @@ SAVE joins (8 characters at least), SEL goes back to the list.
 
 ## RADIO COSMOS (FX)
 
-FX tunes in (with WiFi; again: off): every FM-1 tuned in plays the same chords at the same moment, each with its own
-sky. The chords are written together on the web page (`web/site/radio`, published at /COSMOS/radio/):
+FX opens the RADIO page (with WiFi). ALGO picks the role:
 
-- Time is cut into 10 s slots, numbered from the clock (unix time / 10), the same on every FM-1 (SNTP, to the
-  millisecond) and every page. The page shows the slot playing, the next one (locked), and the ten after it, open:
-  each takes up to three notes (two octaves of keys); with others writing, 15 s between one's changes. A slot left
-  empty is the sky's: each FM-1 plays its own chord there.
-- Each FM-1 locks the next slot's chord when the current one begins, and plays it at its start: the drone on the
-  lowest note (its partner the fifth when the chord has it, else the octave), the pad the notes an octave over it,
-  the stars in the mode nearest the sun's that holds the chord. Pad, stars, space and rhythm stay its own sky's.
-- The readings show who is tuned in (FM-1s, the page's visitors) and the chord now and next; CHORD says RADIO.
-  The keys do not change the chords while tuned in.
-- Underneath: a task of its own (`cosmos/radio.c`) keeps a plain MQTT connection to a public broker
-  (broker.hivemq.com), the page reaching it over WebSocket. Retained topics under `cosmos-radio/v1/`: `seq/<slot %
-  16>` "<slot> <notes>", `here/<id>` each FM-1 (its place; its will empties it), `web/<id>` each visitor. The
-  messages are notes, not sound. The task starts once WiFi is connected (not to take the heap while it joins).
-  `tools/radio_host` runs it on a computer against a local broker.
+- **PLAYER**: the keys play notes (an octave over them, in this sky's star voice) and each goes out with the time it
+  was played. A violet frame round the sky; the page and the readings say how many listen.
+- **LISTENER**: the page shows the players on air as a constellation: each a star where it is on the Earth (the map
+  fitted to them), the whole turning slowly and breathing, faint lines between neighbours, a star flashing as its
+  player plays. SELECT goes from star to star (west to east), with its code and place; SAVE listens to it (again:
+  stops). One player at a time, heard in this sky's own star voice (the moon's, the pad's or the one fixed in GLO),
+  600 ms after it was played, the same everywhere; the keys it plays light up. A blue frame round the sky; the
+  readings say whom. A listener's own keys play its chords as ever.
+- **OFF**.
+
+A player does not hear the others. The page buttons work from the RADIO page too; PLAY, the octave and the keys go
+on there.
+
+Underneath: a task of its own (`cosmos/radio.c`), started once WiFi is connected, keeps the time (SNTP, to the
+millisecond) and a plain MQTT connection to a public broker (broker.hivemq.com), under `cosmos-radio/v2/`:
+`here/<id>` (retained) each FM-1 tuned in, "<lat> <lon> P" or "<lat> <lon> L [<player>]", its will emptying it;
+`play/<id>` a player's notes, "<t> <note> ...", t the ms of the day (UTC). The messages are notes, not sound. The id
+is 5 characters from the chip's own ID. `tools/radio_host` runs it on a computer against a local broker.
+
+The test player (`web/site/radio-player`, published at /COSMOS/radio/player/) is a web page that is a player: on air
+at a place it is given, it plays a slow pentatonic walk by itself or its keys (the FM-1's 27), so one FM-1 can try
+listening alone. (The 0.21 radio's shared chord sequence and its page are retired: `web/site/radio`, unpublished.)
 
 ## Offline mode
 
@@ -188,7 +195,7 @@ With WiFi off (REC on the WiFi page), or no network in range:
 | **SEL** | the next planet up (in EDIT any of the seven classical ones), or none |
 | **LFO** | the sky alone (a button or a knob brings the readings back for two seconds; the keys only play), and back |
 | **ARP** | the ARP screen: the sky, the arpeggiator on, its line, what it plays lighting up; again: off, and back |
-| **FX** | RADIO COSMOS (above), and off |
+| **FX** | the RADIO page (above), and back |
 | **Pages** | HOME, EDIT, GLO, ENV, LFO, ARP, SEL and FX work from any page: on the settings or WiFi's they leave it (saving) and do what they do (the WiFi password keeps HOME and SEL as its DELETE and BACK); PLAY and the octave work on the settings too |
 | **GLO** | the settings: latitude, longitude, UTC offset, summer time, date, time (local), the pad (AUTO: the weather's, or one of the fifteen), the star voice (AUTO: the moon's, one of the eight, or PAD: the pad's own), the tuning (COSMIC, EQUAL or NATURAL) |
 | **PLAY** | the sky stopped or playing; stopped, a key still sounds its chord, held and for 10 s after. Stopping saves |

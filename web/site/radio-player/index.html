@@ -14,7 +14,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
 <style>
 :root { --bg: #06080e; --panel: #0e121d; --rule: #1f2638; --text: #e9ecf5; --mid: #8f96ad; --accent: #cfd8ff; --on-accent: #0a0d18;
-        --glow: rgba(207, 216, 255, .14); --storm: #ffb38a; --live: #9fe6b8; --player: #6ee68c;
+        --glow: rgba(207, 216, 255, .14); --storm: #ffb38a; --live: #9fe6b8; --player: #b98cff;
         --body: 'IBM Plex Sans', system-ui, sans-serif; --display: DotGothic16, 'IBM Plex Mono', monospace;
         --mono: 'IBM Plex Mono', ui-monospace, monospace; color-scheme: dark; }
 * { box-sizing: border-box; }
@@ -43,14 +43,14 @@ input[type=number] { width: 100%; background: var(--bg); color: var(--text); bor
 .row { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; }
 .btn { display: inline-flex; align-items: center; justify-content: center; padding: 0 18px; border-radius: 12px; border: 0;
        font: 600 15px/1 var(--body); min-height: 46px; cursor: pointer; }
-.btn.primary { background: var(--player); color: var(--on-accent); box-shadow: 0 0 28px rgba(110,230,140,.2); }
+.btn.primary { background: var(--player); color: var(--on-accent); box-shadow: 0 0 28px rgba(185,140,255,.25); }
 .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--rule); }
 .btn[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 .keys { position: relative; height: 150px; user-select: none; -webkit-user-select: none; touch-action: none; }
 .key { position: absolute; top: 0; border: 1px solid #000; border-radius: 0 0 8px 8px; padding: 0; cursor: pointer; }
 .key.w { height: 150px; background: #dfe3ef; z-index: 1; }
 .key.b { height: 92px; background: #1a1f2e; z-index: 2; }
-.key.on { background: var(--player) !important; box-shadow: 0 0 18px rgba(110,230,140,.6); }
+.key.on { background: var(--player) !important; box-shadow: 0 0 18px rgba(185,140,255,.6); }
 .log { font: 13px/1.6 var(--mono); color: var(--mid); min-height: 1.6em; word-break: break-word; }
 .how { color: var(--mid); font-size: 15px; } .how b { color: var(--text); } .how ol { margin: 8px 0 0; padding-left: 20px; }
 </style>
@@ -230,37 +230,43 @@ function onAir() {
 $('air').addEventListener('click', onAir);
 for (const el of [$('lat'), $('lon')]) el.addEventListener('change', () => { if (mq && mq.ok) mq.publish(T + 'here/' + ID, place() + ' P', true); });
 
+// the FM-1's keys: 27, F3 .. G5; a key's note goes out an octave up, as an FM-1 player's (cosmos/app.c: the key's
+// MIDI note + 12), so it lights the same key on the FM-1 that listens
+const FIRST_KEY = 53, NKEYS = 27;
 const sent = [];
-function play(note) {                               // a note: out, lit, and here if asked
+function play(key) {                                // a key: its note out, lit, and here if asked
+  const note = key + 12;
   if (mq && mq.ok) mq.publish(T + 'play/' + ID, dayMs() + ' ' + note, false);
-  const k = keys.querySelector('[data-n="' + note + '"]');
+  const k = keys.querySelector('[data-n="' + key + '"]');
   if (k) { k.classList.add('on'); setTimeout(() => k.classList.remove('on'), 250); }
-  sent.push(NAMES[note % 12] + (Math.floor(note / 12) - 1));
+  sent.push(NAMES[key % 12] + (Math.floor(key / 12) - 1));
   if (sent.length > 16) sent.shift();
   $('log').textContent = sent.join(' ');
   if (ac) ping(note);
 }
 
-// ---- by itself: a slow walk on a pentatonic scale, in phrases with rests
+// ---- by itself: a slow walk on a pentatonic scale, in phrases with rests, on the FM-1's keys only
 const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const PENTA = [0, 2, 4, 7, 9];
-let step = 5, root = 62, phrase = 0;
+let step = 5, root = 55, phrase = 0;
+const keyOf = st => root + 12 * Math.floor(st / 5) + PENTA[st % 5];
 function walk() {
   if ($('auto').getAttribute('aria-pressed') === 'true' && mq && mq.ok) {
     if (phrase <= 0 && Math.random() < 0.35) { phrase = 4 + Math.floor(Math.random() * 6); setTimeout(walk, 1500 + Math.random() * 2000); return; }
-    step = Math.max(0, Math.min(11, step + [-2, -1, -1, 1, 1, 2, 0][Math.floor(Math.random() * 7)]));
-    if (Math.random() < 0.04) root = [57, 60, 62, 64, 65][Math.floor(Math.random() * 5)];
-    play(root + 12 * Math.floor(step / 5) + PENTA[step % 5]);
+    if (Math.random() < 0.04) root = [53, 55, 57, 60][Math.floor(Math.random() * 4)];
+    step = Math.max(0, step + [-2, -1, -1, 1, 1, 2, 0][Math.floor(Math.random() * 7)]);
+    while (keyOf(step) > FIRST_KEY + NKEYS - 1) step--;   // G5 at most
+    play(keyOf(step));
     phrase--;
   }
   setTimeout(walk, [300, 450, 450, 600, 900][Math.floor(Math.random() * 5)]);
 }
 $('auto').addEventListener('click', e => e.target.setAttribute('aria-pressed', e.target.getAttribute('aria-pressed') === 'true' ? 'false' : 'true'));
 
-// ---- the keys: two octaves, C4 .. B5
+// ---- the keys: the FM-1's, F3 .. G5
 const keys = $('keys');
 (function () {
-  const LO = 60, HI = 83, whites = [];
+  const LO = FIRST_KEY, HI = FIRST_KEY + NKEYS - 1, whites = [];
   for (let n = LO; n <= HI; n++) if (![1, 3, 6, 8, 10].includes(n % 12)) whites.push(n);
   const W = 100 / whites.length;
   for (let n = LO; n <= HI; n++) {
