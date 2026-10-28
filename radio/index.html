@@ -39,6 +39,7 @@ h1 { margin: 6px 0 0; font: 400 clamp(34px, 8vw, 54px)/1 var(--display); letter-
 .count { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 10px 14px; min-width: 120px; }
 .count b { display: block; font: 400 28px/1 var(--display); }
 .count span { font: 600 11px/1 var(--mono); letter-spacing: .12em; color: var(--mid); text-transform: uppercase; }
+.count.solo b { font-size: 20px; line-height: 28px; color: #6ee68c; }
 .track { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(92px, 1fr); gap: 8px; overflow-x: auto;
          padding: 2px 2px 10px; scroll-snap-type: x proximity; }
 .slot { position: relative; scroll-snap-align: start; min-height: 112px; border-radius: 14px; border: 1px solid var(--rule);
@@ -95,6 +96,7 @@ footer { font: 12px/1.5 var(--mono); color: var(--mid); }
     <div class="count"><b id="nfm">–</b><span>FM-1 tuned in</span></div>
     <div class="count"><b id="nweb">–</b><span>here writing</span></div>
     <div class="count"><b id="tnext">–</b><span>to the next chord</span></div>
+    <div class="count solo"><b id="solo">–</b><span id="sololab">soloist</span></div>
   </div>
 
   <div class="track" id="track" aria-label="The next chords"></div>
@@ -118,6 +120,7 @@ footer { font: 12px/1.5 var(--mono); color: var(--mid); }
       <li>Tap an open slot and its keys: up to <b>three notes</b>. Each change counts at once; with others writing, wait 15 seconds before the next.</li>
       <li>A slot left empty is the <b>sky's</b>: each FM-1 plays its own chord there.</li>
       <li>On the FM-1 (COSMOS with RADIO, WiFi on) press <b>FX</b>: it tunes in, and the readings show the chord now and the next.</li>
+      <li>Each minute one FM-1 tuned in is the <b>soloist</b> (a green frame): its keys ring bells on every FM-1 tuned in, 0.6 s later, each in its own moon's bells (a blue frame: listening). Then the next one, at random.</li>
     </ol>
   </section>
 
@@ -227,14 +230,14 @@ class Mqtt {
 
 // ---- the state: the sequence by slot, who is there, what this visitor picked
 const seq = new Map();                                   // slot -> [notes]
-const fm1 = new Set(), web = new Set();
+const fm1 = new Map(), web = new Set();             // the FM-1s tuned in: id -> place
 let sel = null, coolUntil = 0;
 const me = 'w' + Math.random().toString(36).slice(2, 10);
 const mq = new Mqtt(BROKER, 'cosmos-web-' + me.slice(1), T + 'web/' + me, (cls, t) => {
   const s = $('state'); s.className = 'state ' + cls; s.textContent = t;
 }, onMessage, () => {
   fm1.clear(); web.clear();
-  mq.subscribe([T + 'seq/+', T + 'here/+', T + 'web/+']);
+  mq.subscribe([T + 'seq/+', T + 'here/+', T + 'web/+', T + 'solo/+']);
   mq.publish(T + 'web/' + me, '1', true);
 });
 
@@ -244,12 +247,36 @@ function onMessage(topic, msg) {
     if (v.length) seq.set(v[0], v.slice(1, 4).filter(n => n >= 24 && n <= 108));
   } else if (topic.startsWith(T + 'here/')) {
     const id = topic.slice(T.length + 5);
-    msg ? fm1.add(id) : fm1.delete(id);
+    msg ? fm1.set(id, msg) : fm1.delete(id);
+  } else if (topic.startsWith(T + 'solo/')) {      // the soloist's keys: "<t> <note> ..." (t: ms of the day, UTC)
+    const id = topic.slice(T.length + 5);
+    if (id !== soloist().id) return;
+    const v = msg.trim().split(/\s+/).map(Number);
+    for (let i = 0; i + 1 < v.length; i += 2) bellAt(v[i], v[i + 1]);
+    return;
   } else if (topic.startsWith(T + 'web/')) {
     const id = topic.slice(T.length + 4);
     msg ? web.add(id) : web.delete(id);
   }
   draw();
+}
+
+// the soloist: this minute's, as every FM-1 works it out (radio.c radio_solo: its id's FNV-1a hash mixed with the
+// minute, the lowest)
+function fnv(s) { let h = 0x811C9DC5; for (const c of enc.encode(s)) h = Math.imul(h ^ c, 16777619) >>> 0; return h || 1; }
+function mix(h, minute) {
+  let x = (h ^ Math.imul(minute, 0x9E3779B1)) >>> 0;
+  x ^= x >>> 16; x = Math.imul(x, 0x85EBCA6B) >>> 0; x ^= x >>> 13; x = Math.imul(x, 0xC2B2AE35) >>> 0; x ^= x >>> 16;
+  return x >>> 0;
+}
+function soloist() {
+  const minute = Math.floor(now() / 60000);
+  let best = null;
+  for (const [id, place] of fm1) {
+    const h = fnv(id), x = mix(h, minute);
+    if (!best || x < best.x || (x === best.x && h < best.h)) best = { id, place, x, h };
+  }
+  return best || {};
 }
 
 // a slot can be changed from the one after the next, and not in the last second before the next one locks
@@ -302,6 +329,9 @@ function draw() {
   $('nfm').textContent = fm1.size;
   $('nweb').textContent = web.size;
   $('tnext').textContent = Math.ceil((SLOT_MS - into) / 1000) + ' s';
+  const so = soloist(), left = 60 - Math.floor(now() / 1000) % 60;
+  $('solo').textContent = so.place ? so.place.replace(' ', ', ') : 'nobody yet';
+  $('sololab').textContent = so.place ? 'soloist · ' + left + ' s left' : 'soloist';
   if (sel !== null && !editable(sel)) sel = null;
   // the cards: now, next (locked), then the open ones
   while (track.children.length < AHEAD + 2) {
@@ -341,6 +371,20 @@ $('clear').addEventListener('click', () => { if (sel !== null) setNotes(sel, [])
 
 // ---- listening here: a soft pad on the chord now (the sky's slots quiet); the FM-1s play it for real
 let ac = null, voices = [], heard = null;
+// the soloist's bell: an FM bell (the FM-1s ring their moon's), 0.6 s after it was played, as everywhere
+function bellAt(t, note) {
+  if (!ac || !(note >= 24 && note <= 108)) return;
+  let late = (now() % 86400000) - t;
+  if (late < -43200000) late += 86400000; else if (late > 43200000) late -= 86400000;
+  if (late > 2100) return;
+  const at = ac.currentTime + Math.max(0, 600 - late) / 1000, f = 440 * 2 ** ((note - 69) / 12);
+  const c = ac.createOscillator(), m = ac.createOscillator(), mg = ac.createGain(), g = ac.createGain();
+  c.frequency.value = f; m.frequency.value = f * 3.5;
+  mg.gain.setValueAtTime(f * 1.4, at); mg.gain.exponentialRampToValueAtTime(f * 0.05, at + 0.6);
+  g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.12, at + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, at + 2.2);
+  m.connect(mg).connect(c.frequency); c.connect(g).connect(ac.destination);
+  c.start(at); m.start(at); c.stop(at + 2.3); m.stop(at + 2.3);
+}
 function listenTick(cur) {
   if (!ac) return;
   const n = seq.get(cur) || [], key = cur + ':' + n.join(',');
