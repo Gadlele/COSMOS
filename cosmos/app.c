@@ -1258,23 +1258,20 @@ static void settings_frame(void)
             copy(l, r == ui.row ? "> " : "  ", 24);
             put(l + 2, LABEL[r]);
             line2(t, l, v);
-        } else if (i == 12) {            /* (test builds) the load of each part, % of a block's time */
-            uint32_t lm, lp, ls;
-            eng_load(&lm, &lp, &ls);
-            q = put(put_int(put(t, "DRONE+FX "), (int32_t)lm), " PAD ");
-            put(put_int(put(put_int(q, (int32_t)lp), " STARS "), (int32_t)ls), "");
+        } else if (i == 12) {
+            copy(t, "SELECT ROW ALGO/PRESET STEP", 32);
             c = C_MID;
-        } else if (i == 13) {            /* the load; one core: why (the second's give-up code); the glitches */
+        } else if (i == 13) {            /* the audio load (CPU2: on both cores), the heap, the battery */
+            int bt = plat_battery();
             q = put(t, plat_cpu2_on() ? "CPU2 " : "CPU ");
-            q = put(put_int(q, (int32_t)plat_cpu_pct()), "%");
-            if (!plat_cpu2_on()) {       /* G: the second core's give-up code; F: the boots that failed (under 30 s) */
-                q = put_int(put(q, plat_cpu2_barred() ? " B" : " G"), plat_cpu2_gave_up());
-#ifndef PLAT_HOST
-                q = put_int(put(q, " F"), (int32_t)bootguard.failed);
-#endif
-            }
-            q = put_int(put(q, " XR "), (int32_t)(plat_xruns() > 9999u ? 9999u : plat_xruns()));
-            put(put_int(put(q, " H"), (int32_t)((shim_heap_size - shim_heap_used) / 1024u)), "K");
+            q = put(put_int(q, (int32_t)plat_cpu_pct()), "% HEAP ");
+            q = put(put_int(q, (int32_t)((shim_heap_size - shim_heap_used) / 1024u)), "K BAT ");
+            if (bt == 4)
+                put(q, "USB");
+            else if (bt >= 0)
+                put(put_int(q, bt * 100 / 3), "%");
+            else
+                put(q, "-");
             c = C_LOW;
         }
         cv_text(8, 0, &FONT_S, t, c);

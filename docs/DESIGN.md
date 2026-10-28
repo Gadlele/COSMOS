@@ -5,7 +5,10 @@
 - **Base:** fm1-base with `wifi = true`. Bluetooth is off (fm1-base cannot run WiFi and Bluetooth together).
 - **Network:** the connection, HTTPS (BearSSL) and download code comes from fm1-radio. The radio itself (Radio
   Garden, MP3/AAC decoders) is left out.
-- **Sound engine:** written from scratch.
+- **Sound engine:** written from scratch. The pads, the stars and the rhythm are rendered a block ahead, on the
+  second core when it runs (fm1-base's `cpu2`, with its fallback: one core after a failed start, which keeps it off
+  on some units), else after the block on the first; the voices' sine is read from RAM (from the flash every read
+  could wait on the cache). GLO's last line shows the load (CPU2 on two cores).
 - **UI:** COSMOS's own, including every WiFi screen (network list, password, status). fm1-radio's UI is not used.
 
 ## Sound engine
@@ -138,10 +141,31 @@ Sun height, not clock time: the sound follows the seasons by itself, and dawn so
 
 ENV opens the WiFi page, and closes it. The state, the network, the signal, how old the weather is, then the networks
 around, the strongest first (SAVED: known). SELECT picks one, SAVE joins it (a known or open one at once, else the
-password), FX looks again, REC turns WiFi off or on (offline), PLAY fetches now.
+password), SEQ looks again, REC turns WiFi off or on (offline), PLAY fetches now. The page buttons (HOME, EDIT,
+GLO, LFO, ARP, SEL, FX) leave it and do what they do.
 
 The password: SELECT turns through the characters, ALGO jumps a group (abc ABC 123 #+=), PLAY adds, HOME deletes,
 SAVE joins (8 characters at least), SEL goes back to the list.
+
+## RADIO COSMOS (FX)
+
+FX tunes in (with WiFi; again: off): every FM-1 tuned in plays the same chords at the same moment, each with its own
+sky. The chords are written together on the web page (`web/site/radio`, published at /COSMOS/radio/):
+
+- Time is cut into 10 s slots, numbered from the clock (unix time / 10), the same on every FM-1 (SNTP, to the
+  millisecond) and every page. The page shows the slot playing, the next one (locked), and the ten after it, open:
+  each takes up to three notes (two octaves of keys); with others writing, 15 s between one's changes. A slot left
+  empty is the sky's: each FM-1 plays its own chord there.
+- Each FM-1 locks the next slot's chord when the current one begins, and plays it at its start: the drone on the
+  lowest note (its partner the fifth when the chord has it, else the octave), the pad the notes an octave over it,
+  the stars in the mode nearest the sun's that holds the chord. Pad, stars, space and rhythm stay its own sky's.
+- The readings show who is tuned in (FM-1s, the page's visitors) and the chord now and next; CHORD says RADIO.
+  The keys do not change the chords while tuned in.
+- Underneath: a task of its own (`cosmos/radio.c`) keeps a plain MQTT connection to a public broker
+  (broker.hivemq.com), the page reaching it over WebSocket. Retained topics under `cosmos-radio/v1/`: `seq/<slot %
+  16>` "<slot> <notes>", `here/<id>` each FM-1 (its place; its will empties it), `web/<id>` each visitor. The
+  messages are notes, not sound. The task starts once WiFi is connected (not to take the heap while it joins).
+  `tools/radio_host` runs it on a computer against a local broker.
 
 ## Offline mode
 
@@ -164,7 +188,9 @@ With WiFi off (REC on the WiFi page), or no network in range:
 | **SEL** | the next planet up (in EDIT any of the seven classical ones), or none |
 | **LFO** | the sky alone (a button or a knob brings the readings back for two seconds; the keys only play), and back |
 | **ARP** | the ARP screen: the sky, the arpeggiator on, its line, what it plays lighting up; again: off, and back |
-| **GLO** | the settings: latitude, longitude, UTC offset, summer time, date, time (local), the pad (AUTO: the weather's, or one of the fifteen), the star voice (AUTO: the moon's, or one of the eight), the tuning (COSMIC, EQUAL or NATURAL) |
+| **FX** | RADIO COSMOS (above), and off |
+| **Pages** | HOME, EDIT, GLO, ENV, LFO, ARP, SEL and FX work from any page: on the settings or WiFi's they leave it (saving) and do what they do (the WiFi password keeps HOME and SEL as its DELETE and BACK); PLAY and the octave work on the settings too |
+| **GLO** | the settings: latitude, longitude, UTC offset, summer time, date, time (local), the pad (AUTO: the weather's, or one of the fifteen), the star voice (AUTO: the moon's, one of the eight, or PAD: the pad's own), the tuning (COSMIC, EQUAL or NATURAL) |
 | **PLAY** | the sky stopped or playing; stopped, a key still sounds its chord, held and for 10 s after. Stopping saves |
 | **Lights** | the buttons that do something glow, the ones in use bright; the keys of the scale glow, the root's bright |
 | **OCT− / OCT+** | the octave |
