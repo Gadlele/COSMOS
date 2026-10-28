@@ -49,6 +49,7 @@ static struct st_s {
     star_t v[NS];
     int16_t *ks;                         /* the harp strings' lines (heap), KS_N a voice */
     uint32_t ks_w[NS];
+    float *buf;                          /* a block of them (stars_render), stereo (heap) */
     uint32_t step_n, step_len;           /* PULSAR's sixteenths: the samples into this one, its length */
     uint32_t step_i;                     /* which sixteenth of the bar */
     float gate, gdec, gmix;              /* the pad's gate now, its fall a sample, how much of it */
@@ -70,7 +71,8 @@ int stars_init(void)
     }
     uint32_t i;
     st.ks = malloc(NS * KS_N * sizeof(int16_t));
-    if (!st.ks)
+    st.buf = malloc(2u * PS_MAX * sizeof(float));
+    if (!st.ks || !st.buf)
         return -1;
     for (i = 0; i < NS * KS_N; i++)
         st.ks[i] = 0;
@@ -81,7 +83,7 @@ int stars_init(void)
     st.thump_t = 1.0f;
     return 0;
 }
-uint32_t stars_bytes(void) { return sizeof *st_p + NS * KS_N * sizeof(int16_t); }
+uint32_t stars_bytes(void) { return sizeof *st_p + NS * KS_N * sizeof(int16_t) + 2u * PS_MAX * sizeof(float); }
 
 /* the arpeggiator's notes, from the main loop: a small queue the render takes from at each block */
 #define NQ 16
@@ -335,196 +337,231 @@ static const float VGAIN[V_N] = {1.0f, 0.5f, 1.9f, 0.95f, 0.95f, 0.95f, 1.1f, 1.
 /* the voices whose level is their first envelope (d[0]): they end once it has faded out (the rest keep their life) */
 static const uint8_t DIES[V_N] = {1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1};
 
-/* a sample of the star voices, added to l and r; w a white noise sample */
-static inline void stars_tick(float *l, float *r, float w)
+/* a voice's sample: its type a constant where it is inlined (the switch goes); q its slot, w a white noise sample */
+static inline __attribute__((always_inline)) float star_x(star_t *v, int32_t q, int32_t type, float w)
 {
-    int32_t i;
-    for (i = 0; i < NS; i++) {
-        star_t *v = &st.v[i];
-        float x = 0.0f, a;
+    float x = 0.0f, a = v->t < 88.0f ? v->t * (1.0f / 88.0f) : 1.0f;   /* 2 ms in: no click */
+    switch (type) {
+    case V_KALIMBA:
+        v->ph[0] += v->inc[0];
+        v->ph[1] += v->inc[1];
+        v->ph[2] += v->inc[2];
+        x = wt(SINE, v->ph[0]) * v->d[0] + 0.35f * wt(SINE, v->ph[1]) * v->d[1] + 0.15f * wt(SINE, v->ph[2]) * v->d[2];
+        x += reso(v->s[0], v->a[0], 0.990025f, x) * 0.002f;   /* the wooden box */
+        break;
+    case V_HARP: {
+        int16_t *b = st.ks + (uint32_t)q * KS_N;
+        float y;
+        uint32_t n = (uint32_t)v->ks_len + 2u, wi = st.ks_w[q];
+        float fr = v->ks_len - (float)(n - 2u);
+        y = ((float)b[wi % n] + (float)(b[(wi + 1u) % n] - b[wi % n]) * fr) * (1.0f / 28000.0f);
+        v->ks_lp += 0.45f * (y - v->ks_lp);
+        b[wi % n] = (int16_t)(fm_clampf(v->ks_lp * 0.9993f, -1.15f, 1.15f) * 28000.0f);
+        st.ks_w[q] = wi + 1u;
+        v->ph[1] += v->inc[1];
+        v->s[0][0] += 0.5f * (y - v->s[0][0]);   /* the body takes the edge off */
+        x = v->s[0][0] * 0.8f + 0.3f * wt(SINE, v->ph[1]) * v->d[0];
+        break;
+    }
+    case V_CELESTA:
+        v->ph[0] += v->inc[0];
+        v->ph[1] += v->inc[1];
+        v->ph[2] += v->inc[2];
+        x = wt(SINE, v->ph[0] + (uint32_t)(int32_t)(wt(SINE, v->ph[1]) * 1.5f * v->d[3] * 683565275.0f)) * v->d[0]
+            + 0.3f * wt(SINE, v->ph[2]) * v->d[1];
+        break;
+    case V_CHIMES:
+        v->ph[0] += v->inc[0];
+        v->ph[1] += v->inc[1];
+        v->ph[2] += v->inc[2];
+        x = (wt(SINE, v->ph[0]) * v->d[0] + 0.5f * wt(SINE, v->ph[1]) * v->d[1] + 0.25f * wt(SINE, v->ph[2]) * v->d[2])
+            * 0.7f;
+        break;
+    case V_GLASS:
+        v->ph[0] += v->inc[0];
+        v->ph[1] += v->inc[1];
+        v->ph[2] += v->inc[2];
+        x = wt(SINE, v->ph[0] + (uint32_t)(int32_t)(wt(SINE, v->ph[1]) * 1.4f * v->d[3] * 683565275.0f)) * v->d[0]
+            + 0.3f * wt(SINE, v->ph[2]) * v->d[1];
+        break;
+    case V_MUSICBOX:
+        v->ph[0] += (uint32_t)((float)v->inc[0] * pd.wowm);
+        v->ph[1] += (uint32_t)((float)v->inc[1] * pd.wowm);
+        x = wt(SINE, v->ph[0] + (uint32_t)(int32_t)(wt(SINE, v->ph[1]) * 1.2f * v->d[3] * 683565275.0f)) * v->d[0];
+        break;
+    case V_FLUTE: {
+        float env = v->t < 1764.0f ? v->t * (1.0f / 1764.0f) : v->t < 15435.0f ? 1.0f
+                    : fm_maxf(0.0f, 1.0f - (v->t - 15435.0f) * (1.0f / 13230.0f));
+        v->ph[0] += v->inc[0];
+        v->ph[1] += v->inc[1];
+        x = (wt(SINE, v->ph[0]) + 0.2f * wt(SINE, v->ph[1]) + 0.15f * svf(v->s[0], v->a, w, 1)) * env;
+        break;
+    }
+    case V_PULSE:                    /* an analog pluck: two saws through a closing low-pass */
+        v->ph[0] += v->inc[0];
+        v->ph[1] += v->inc[1];
+        if (((uint32_t)v->t & 31u) == 0u)
+            svf_set(v->a, 300.0f + 2500.0f * v->d[0] * v->d[0], 0.5f);
+        x = svf(v->s[0], v->a, saw(v->ph[0], (float)v->inc[0]) + saw(v->ph[1], (float)v->inc[1]), 0) * v->d[0] * 0.6f;
+        break;
+    case V_SEQ: {                    /* the sequence's voice: its filter snapping, driven */
+        float o;
+        v->ph[0] += v->inc[0];
+        v->ph[1] += v->inc[1];
+        v->ph[2] += v->inc[2];
+        if (((uint32_t)v->t & 31u) == 0u) {
+            float snap = v->d[0] * v->d[0] * v->d[0];   /* (0.12 s)^1.5: about 0.08 s */
+            svf_set(v->a, fm_minf(200.0f + (900.0f + 3500.0f * (0.5f + 0.5f * sin01(st.seq_lfo))) * snap
+                                  * (0.5f + v->vel * 2.0f), 9000.0f), 0.25f);
+        }
+        o = saw(v->ph[0], (float)v->inc[0]) + 0.7f * saw(v->ph[1], (float)v->inc[1])
+            + 0.5f * (v->ph[2] < 0x80000000u ? 1.0f : -1.0f);
+        x = sat(svf(v->s[0], v->a, o * 0.5f, 0) * 1.5f) * v->d[0] * 0.8f;
+        break;
+    }
+    case V_ABELL:
+    case V_GBELL:
+    case V_VBELL:
+        v->ph[0] += v->inc[0];
+        v->ph[1] += v->inc[1];
+        v->ph[2] += v->inc[2];
+        x = wt(SINE, v->ph[0] + (uint32_t)(int32_t)(wt(SINE, v->ph[1]) * v->ks_lp * v->d[3] * 683565275.0f)) * v->d[0];
+        if (v->ks_len > 0.0f)
+            x = x * 0.8f + v->ks_len * wt(SINE, v->ph[2]) * v->d[1];
+        break;
+    case V_STRING:
+        v->ph[0] += v->inc[0];
+        v->ph[1] += v->inc[1];
+        v->ph[2] += v->inc[2];
+        x = (wt(SINE, v->ph[0]) * v->d[0] + 0.5f * wt(SINE, v->ph[1]) * v->d[1] + 0.33f * wt(SINE, v->ph[2]) * v->d[2]
+             + 0.4f * w * v->d[3]) * 0.6f;
+        break;
+    case V_WHISTLE: {
+        float env = v->t < 6615.0f ? v->t * (1.0f / 6615.0f) : v->t < 15435.0f ? 1.0f
+                    : fm_maxf(0.0f, 1.0f - (v->t - 15435.0f) * (1.0f / 35280.0f));
+        x = svf(v->s[0], v->a, w, 1) * env * 0.12f;
+        break;
+    }
+    case V_GRAINS: {                 /* each grain 34 ms under a raised cosine, now and then an octave up */
+        uint32_t g = (uint32_t)v->t, j;
+        for (j = 0; j < 2u; j++) {   /* the second grain half a grain behind the first */
+            uint32_t gt;
+            if (g < j * 750u || g >= 11025u + j * 750u)
+                continue;
+            gt = (g - j * 750u) % 1500u;
+            if (gt == 0u)
+                v->inc[j] = v->inc[2] << ((xs2() & 0xFFu) < 77u ? 1 : 0);
+            x += wt(SINE, v->ph[j] += v->inc[j]) * (0.5f - 0.5f * wt(SINE, gt * 2863311u + 0x40000000u));
+        }
+        x *= 0.7f;
+        break;
+    }
+    case V_RBELL:
+        v->ph[0] += v->inc[0];
+        v->ph[1] += v->inc[1];
+        if (v->t < v->ks_len) {
+            float sw = v->t / v->ks_len;
+            x = wt(SINE, v->ph[0] + (uint32_t)(int32_t)(wt(SINE, v->ph[1]) * 2.0f * v->d[3] * 683565275.0f))
+                * v->d[0] * sw * sw;
+        } else {                     /* the strike: 4 ms out */
+            x = wt(SINE, v->ph[0]) * v->d[0] * fm_maxf(0.0f, 1.0f - (v->t - v->ks_len) * (1.0f / 176.0f));
+        }
+        break;
+    case V_GLINT: {
+        float env = v->t < 13230.0f ? v->t * (1.0f / 13230.0f) : fm_maxf(0.0f, 1.0f - (v->t - 13230.0f) * (1.0f / 66150.0f));
+        v->ph[0] += v->inc[0];
+        x = wt(SINE, v->ph[0]) * env * env;
+        break;
+    }
+    case V_BONGO: {                  /* folded: sin of the sum, deeper the harder it is struck */
+        float y = wt(SINE, v->ph[0] += v->inc[0]) + 0.5f * wt(SINE, v->ph[1] += v->inc[1]);
+        if (((uint32_t)v->t & 31u) == 0u)
+            svf_set(v->a, 200.0f + 6000.0f * v->d[0] * v->d[0], 1.41f);
+        y = wt(SINE, (uint32_t)(int32_t)(y * (1.0f + 3.0f * v->d[0]) * 683565275.0f));
+        x = svf(v->s[0], v->a, y, 0) * v->d[0];
+        break;
+    }
+    case V_NBELL:
+        v->ph[0] += v->inc[0];
+        v->ph[1] += v->inc[1];
+        if (((uint32_t)v->t & 31u) == 0u)
+            svf_set(v->a, 400.0f + 3000.0f * v->d[1], 1.41f);
+        x = svf(v->s[0], v->a, saw(v->ph[0], (float)v->inc[0]) - saw(v->ph[0] + 0x4CCCCCCDu, (float)v->inc[0])
+                                   + wt(SINE, v->ph[1]), 0) * v->d[0] * 0.6f;
+        break;
+    case V_SYNTH:
+        v->ph[0] += v->inc[0];
+        if (((uint32_t)v->t & 31u) == 0u)
+            svf_set(v->a, 500.0f + 2200.0f * v->d[1], 0.67f);
+        x = svf(v->s[0], v->a, saw(v->ph[0], (float)v->inc[0]) - saw(v->ph[0] + 0x40000000u, (float)v->inc[0]), 0)
+            * v->d[0] * 0.6f;
+        break;
+    default:                         /* DROPS */
+        v->ph[0] += v->inc[0];
+        v->ph[1] += v->inc[1];
+        x = wt(SINE, v->ph[0]) * v->d[0] + 0.3f * wt(SINE, v->ph[1]) * v->d[1];
+        break;
+    }
+    return x * a;
+}
+
+/* the voices that take noise */
+#define STAR_NOISE(T) ((T) == V_FLUTE || (T) == V_STRING || (T) == V_WHISTLE)
+
+/* a block of the star voices, added to o (n stereo frames): each voice its whole block at once, its type's loop
+ * without the switch (much cheaper than every voice at every sample) */
+static void stars_render(float *o, uint32_t n)
+{
+    int32_t q;
+    for (q = 0; q < NS; q++) {
+        star_t *v = &st.v[q];
+        uint32_t i = 0;
+        float gl, gr, g;
         if (!v->on)
             continue;
         if (v->wait > 0) {
-            v->wait--;
-            continue;
+            if ((uint32_t)v->wait >= n) {
+                v->wait -= (int32_t)n;
+                continue;
+            }
+            i = (uint32_t)v->wait;
+            v->wait = 0;
         }
-        a = v->t < 88.0f ? v->t * (1.0f / 88.0f) : 1.0f;   /* 2 ms in: no click */
+        g = v->amp * VGAIN[v->type];
+        gl = g * (0.7f - 0.4f * v->pan);
+        gr = g * (0.7f + 0.4f * v->pan);
+#define STAR_RUN(T)                                                                                                   \
+    case T:                                                                                                           \
+        for (; i < n; i++) {                                                                                          \
+            float x = star_x(v, q, T, STAR_NOISE(T) ? rnd_pm2() : 0.0f);                                             \
+            v->d[0] *= v->k[0];                                                                                       \
+            v->d[1] *= v->k[1];                                                                                       \
+            v->d[2] *= v->k[2];                                                                                       \
+            v->d[3] *= v->k[3];                                                                                       \
+            o[2u * i] += x * gl;                                                                                      \
+            o[2u * i + 1u] += x * gr;                                                                                 \
+            v->t += 1.0f;                                                                                             \
+            if (v->t > v->life) {                                                                                     \
+                v->on = 0;                                                                                            \
+                break;                                                                                                \
+            }                                                                                                         \
+        }                                                                                                             \
+        break;
         switch (v->type) {
-        case V_KALIMBA:
-            v->ph[0] += v->inc[0];
-            v->ph[1] += v->inc[1];
-            v->ph[2] += v->inc[2];
-            x = wt(SINE, v->ph[0]) * v->d[0] + 0.35f * wt(SINE, v->ph[1]) * v->d[1] + 0.15f * wt(SINE, v->ph[2]) * v->d[2];
-            x += reso(v->s[0], v->a[0], 0.990025f, x) * 0.002f;   /* the wooden box */
-            break;
-        case V_HARP: {
-            int16_t *b = st.ks + (uint32_t)i * KS_N;
-            float y;
-            uint32_t n = (uint32_t)v->ks_len + 2u, wi = st.ks_w[i];
-            float fr = v->ks_len - (float)(n - 2u);
-            y = ((float)b[wi % n] + (float)(b[(wi + 1u) % n] - b[wi % n]) * fr) * (1.0f / 28000.0f);
-            v->ks_lp += 0.45f * (y - v->ks_lp);
-            b[wi % n] = (int16_t)(fm_clampf(v->ks_lp * 0.9993f, -1.15f, 1.15f) * 28000.0f);
-            st.ks_w[i] = wi + 1u;
-            v->ph[1] += v->inc[1];
-            v->s[0][0] += 0.5f * (y - v->s[0][0]);   /* the body takes the edge off */
-            x = v->s[0][0] * 0.8f + 0.3f * wt(SINE, v->ph[1]) * v->d[0];
-            break;
-        }
-        case V_CELESTA:
-            v->ph[0] += v->inc[0];
-            v->ph[1] += v->inc[1];
-            v->ph[2] += v->inc[2];
-            x = wt(SINE, v->ph[0] + (uint32_t)(int32_t)(wt(SINE, v->ph[1]) * 1.5f * v->d[3] * 683565275.0f)) * v->d[0]
-                + 0.3f * wt(SINE, v->ph[2]) * v->d[1];
-            break;
-        case V_CHIMES:
-            v->ph[0] += v->inc[0];
-            v->ph[1] += v->inc[1];
-            v->ph[2] += v->inc[2];
-            x = (wt(SINE, v->ph[0]) * v->d[0] + 0.5f * wt(SINE, v->ph[1]) * v->d[1] + 0.25f * wt(SINE, v->ph[2]) * v->d[2])
-                * 0.7f;
-            break;
-        case V_GLASS:
-            v->ph[0] += v->inc[0];
-            v->ph[1] += v->inc[1];
-            v->ph[2] += v->inc[2];
-            x = wt(SINE, v->ph[0] + (uint32_t)(int32_t)(wt(SINE, v->ph[1]) * 1.4f * v->d[3] * 683565275.0f)) * v->d[0]
-                + 0.3f * wt(SINE, v->ph[2]) * v->d[1];
-            break;
-        case V_MUSICBOX:
-            v->ph[0] += (uint32_t)((float)v->inc[0] * pd.wowm);
-            v->ph[1] += (uint32_t)((float)v->inc[1] * pd.wowm);
-            x = wt(SINE, v->ph[0] + (uint32_t)(int32_t)(wt(SINE, v->ph[1]) * 1.2f * v->d[3] * 683565275.0f)) * v->d[0];
-            break;
-        case V_FLUTE: {
-            float env = v->t < 1764.0f ? v->t * (1.0f / 1764.0f) : v->t < 15435.0f ? 1.0f
-                        : fm_maxf(0.0f, 1.0f - (v->t - 15435.0f) * (1.0f / 13230.0f));
-            v->ph[0] += v->inc[0];
-            v->ph[1] += v->inc[1];
-            x = (wt(SINE, v->ph[0]) + 0.2f * wt(SINE, v->ph[1]) + 0.15f * svf(v->s[0], v->a, w, 1)) * env;
-            break;
-        }
-        case V_PULSE:                    /* an analog pluck: two saws through a closing low-pass */
-            v->ph[0] += v->inc[0];
-            v->ph[1] += v->inc[1];
-            if (((uint32_t)v->t & 31u) == 0u)
-                svf_set(v->a, 300.0f + 2500.0f * v->d[0] * v->d[0], 0.5f);
-            x = svf(v->s[0], v->a, saw(v->ph[0], (float)v->inc[0]) + saw(v->ph[1], (float)v->inc[1]), 0) * v->d[0] * 0.6f;
-            break;
-        case V_SEQ: {                    /* the sequence's voice: its filter snapping, driven */
-            float o;
-            v->ph[0] += v->inc[0];
-            v->ph[1] += v->inc[1];
-            v->ph[2] += v->inc[2];
-            if (((uint32_t)v->t & 31u) == 0u) {
-                float snap = v->d[0] * v->d[0] * v->d[0];   /* (0.12 s)^1.5: about 0.08 s */
-                svf_set(v->a, fm_minf(200.0f + (900.0f + 3500.0f * (0.5f + 0.5f * sin01(st.seq_lfo))) * snap
-                                      * (0.5f + v->vel * 2.0f), 9000.0f), 0.25f);
-            }
-            o = saw(v->ph[0], (float)v->inc[0]) + 0.7f * saw(v->ph[1], (float)v->inc[1])
-                + 0.5f * (v->ph[2] < 0x80000000u ? 1.0f : -1.0f);
-            x = sat(svf(v->s[0], v->a, o * 0.5f, 0) * 1.5f) * v->d[0] * 0.8f;
-            break;
-        }
-        case V_ABELL:
-        case V_GBELL:
-        case V_VBELL:
-            v->ph[0] += v->inc[0];
-            v->ph[1] += v->inc[1];
-            v->ph[2] += v->inc[2];
-            x = wt(SINE, v->ph[0] + (uint32_t)(int32_t)(wt(SINE, v->ph[1]) * v->ks_lp * v->d[3] * 683565275.0f)) * v->d[0];
-            if (v->ks_len > 0.0f)
-                x = x * 0.8f + v->ks_len * wt(SINE, v->ph[2]) * v->d[1];
-            break;
-        case V_STRING:
-            v->ph[0] += v->inc[0];
-            v->ph[1] += v->inc[1];
-            v->ph[2] += v->inc[2];
-            x = (wt(SINE, v->ph[0]) * v->d[0] + 0.5f * wt(SINE, v->ph[1]) * v->d[1] + 0.33f * wt(SINE, v->ph[2]) * v->d[2]
-                 + 0.4f * w * v->d[3]) * 0.6f;
-            break;
-        case V_WHISTLE: {
-            float env = v->t < 6615.0f ? v->t * (1.0f / 6615.0f) : v->t < 15435.0f ? 1.0f
-                        : fm_maxf(0.0f, 1.0f - (v->t - 15435.0f) * (1.0f / 35280.0f));
-            x = svf(v->s[0], v->a, w, 1) * env * 0.12f;
-            break;
-        }
-        case V_GRAINS: {                 /* each grain 34 ms under a raised cosine, now and then an octave up */
-            uint32_t g = (uint32_t)v->t, j;
-            for (j = 0; j < 2u; j++) {   /* the second grain half a grain behind the first */
-                uint32_t gt;
-                if (g < j * 750u || g >= 11025u + j * 750u)
-                    continue;
-                gt = (g - j * 750u) % 1500u;
-                if (gt == 0u)
-                    v->inc[j] = v->inc[2] << ((xs2() & 0xFFu) < 77u ? 1 : 0);
-                x += wt(SINE, v->ph[j] += v->inc[j]) * (0.5f - 0.5f * wt(SINE, gt * 2863311u + 0x40000000u));
-            }
-            x *= 0.7f;
-            break;
-        }
-        case V_RBELL:
-            v->ph[0] += v->inc[0];
-            v->ph[1] += v->inc[1];
-            if (v->t < v->ks_len) {
-                float sw = v->t / v->ks_len;
-                x = wt(SINE, v->ph[0] + (uint32_t)(int32_t)(wt(SINE, v->ph[1]) * 2.0f * v->d[3] * 683565275.0f))
-                    * v->d[0] * sw * sw;
-            } else {                     /* the strike: 4 ms out */
-                x = wt(SINE, v->ph[0]) * v->d[0] * fm_maxf(0.0f, 1.0f - (v->t - v->ks_len) * (1.0f / 176.0f));
-            }
-            break;
-        case V_GLINT: {
-            float env = v->t < 13230.0f ? v->t * (1.0f / 13230.0f) : fm_maxf(0.0f, 1.0f - (v->t - 13230.0f) * (1.0f / 66150.0f));
-            v->ph[0] += v->inc[0];
-            x = wt(SINE, v->ph[0]) * env * env;
-            break;
-        }
-        case V_BONGO: {                  /* folded: sin of the sum, deeper the harder it is struck */
-            float y = wt(SINE, v->ph[0] += v->inc[0]) + 0.5f * wt(SINE, v->ph[1] += v->inc[1]);
-            if (((uint32_t)v->t & 31u) == 0u)
-                svf_set(v->a, 200.0f + 6000.0f * v->d[0] * v->d[0], 1.41f);
-            y = wt(SINE, (uint32_t)(int32_t)(y * (1.0f + 3.0f * v->d[0]) * 683565275.0f));
-            x = svf(v->s[0], v->a, y, 0) * v->d[0];
-            break;
-        }
-        case V_NBELL:
-            v->ph[0] += v->inc[0];
-            v->ph[1] += v->inc[1];
-            if (((uint32_t)v->t & 31u) == 0u)
-                svf_set(v->a, 400.0f + 3000.0f * v->d[1], 1.41f);
-            x = svf(v->s[0], v->a, saw(v->ph[0], (float)v->inc[0]) - saw(v->ph[0] + 0x4CCCCCCDu, (float)v->inc[0])
-                                       + wt(SINE, v->ph[1]), 0) * v->d[0] * 0.6f;
-            break;
-        case V_SYNTH:
-            v->ph[0] += v->inc[0];
-            if (((uint32_t)v->t & 31u) == 0u)
-                svf_set(v->a, 500.0f + 2200.0f * v->d[1], 0.67f);
-            x = svf(v->s[0], v->a, saw(v->ph[0], (float)v->inc[0]) - saw(v->ph[0] + 0x40000000u, (float)v->inc[0]), 0)
-                * v->d[0] * 0.6f;
-            break;
-        default:                         /* DROPS */
-            v->ph[0] += v->inc[0];
-            v->ph[1] += v->inc[1];
-            x = wt(SINE, v->ph[0]) * v->d[0] + 0.3f * wt(SINE, v->ph[1]) * v->d[1];
-            break;
-        }
-        v->d[0] *= v->k[0];
-        v->d[1] *= v->k[1];
-        v->d[2] *= v->k[2];
-        v->d[3] *= v->k[3];
-        x *= v->amp * a * VGAIN[v->type];
-        *l += x * (0.7f - 0.4f * v->pan);
-        *r += x * (0.7f + 0.4f * v->pan);
-        v->t += 1.0f;
-        if (v->t > v->life)
+            STAR_RUN(V_DROPS) STAR_RUN(V_KALIMBA) STAR_RUN(V_HARP) STAR_RUN(V_CELESTA) STAR_RUN(V_CHIMES)
+            STAR_RUN(V_GLASS) STAR_RUN(V_MUSICBOX) STAR_RUN(V_FLUTE) STAR_RUN(V_PULSE) STAR_RUN(V_SEQ)
+            STAR_RUN(V_ABELL) STAR_RUN(V_STRING) STAR_RUN(V_WHISTLE) STAR_RUN(V_GBELL) STAR_RUN(V_GRAINS)
+            STAR_RUN(V_VBELL) STAR_RUN(V_RBELL) STAR_RUN(V_GLINT) STAR_RUN(V_BONGO) STAR_RUN(V_NBELL) STAR_RUN(V_SYNTH)
+        default:
             v->on = 0;
-        else if (((uint32_t)v->t & 255u) == 0u) {
+            break;
+        }
+#undef STAR_RUN
+        if (v->on) {                     /* each block: done early once faded; spent envelopes to 0 */
             int32_t k;
             if (v->t > 4410.0f && v->d[0] * v->amp < 0.001f && DIES[v->type])
-                v->on = 0;               /* faded under hearing (-60 dB): done early, its time for the others */
-            for (k = 0; k < 4; k++)      /* a spent envelope to 0, before it goes denormal (and slow) */
+                v->on = 0;               /* faded under hearing (-60 dB): its time for the others */
+            for (k = 0; k < 4; k++)      /* (before they turn denormal, and slow) */
                 if (v->d[k] < 1e-12f && v->k[k] <= 1.0f)
                     v->d[k] = 0.0f;
         }

@@ -363,12 +363,14 @@ static void ps_render(uint32_t half)
         o[2u * i + 1u] = (int16_t)(fm_clampf(r + pr * g, -3.99f, 3.99f) * PS_ONE);
     }
     t1 = plat_ticks24();
-    for (i = 0; i < n; i++) {            /* the star voices on them */
-        float sl = 0.0f, sr = 0.0f;
+    for (i = 0; i < 2u * n; i++)         /* the star voices on them, a voice at a time */
+        st.buf[i] = 0.0f;
+    stars_render(st.buf, n);
+    for (i = 0; i < n; i++) {
         ps_level += ((target_on ? 1.0f : 0.0f) - ps_level) * 0.00008f;   /* the planet's voice */
-        stars_tick(&sl, &sr, rnd_pm2());
-        o[2u * i] = (int16_t)fm_clampf((float)o[2u * i] + sl * ps_level * PS_ONE, -32767.0f, 32767.0f);
-        o[2u * i + 1u] = (int16_t)fm_clampf((float)o[2u * i + 1u] + sr * ps_level * PS_ONE, -32767.0f, 32767.0f);
+        o[2u * i] = (int16_t)fm_clampf((float)o[2u * i] + st.buf[2u * i] * ps_level * PS_ONE, -32767.0f, 32767.0f);
+        o[2u * i + 1u] = (int16_t)fm_clampf((float)o[2u * i + 1u] + st.buf[2u * i + 1u] * ps_level * PS_ONE,
+                                            -32767.0f, 32767.0f);
     }
     LD_SMOOTH(ld_pads, t1 - t0);
     LD_SMOOTH(ld_stars, plat_ticks24() - t1);
