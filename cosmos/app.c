@@ -141,6 +141,10 @@ static struct {
     uint32_t r_slot;                     /* the 10 s slot playing (unix s / 10); 0 none yet */
     uint8_t r_cur[3], r_next[3];         /* its chord, and the next one's, locked when this one began */
     int r_cur_n, r_next_n;               /* their notes; 0: the sky's own chord */
+    int r_solo;                          /* this minute's soloist: 1 this FM-1, 0 another, -1 none yet */
+    char r_place[12];                    /* the other's place */
+    uint32_t r_left;                     /* the seconds left of the turn */
+    uint32_t r_lit_at[NKEYS], r_lit_end[NKEYS];   /* the keys the soloist's bells light (plat_ms) */
 } ui = {.rnd = 0x2545F491u};
 
 static uint32_t unix_now(void) { return ui.clock_unix + (plat_ms() - ui.clock_ms) / 1000u; }
@@ -882,6 +886,7 @@ static char *note_name(char *d, float hz)
 /* ---- RADIO COSMOS */
 static const char *const NOTE_NAME[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 #define C_RADIO RGB(150, 190, 255)
+#define C_SOLO RGB(110, 230, 140)
 
 /* this FM-1's id: its chip's ID hashed (FNV-1a) into 5 characters, the same every time */
 static void radio_make_id(void)
@@ -911,6 +916,31 @@ static char *dec2(char *d, int32_t v)    /* hundredths as a decimal: "41.90", "-
     *d = 0;
     return d;
 }
+/* the soloist's bells: the moon's, from new to full and back */
+static int32_t bell_voice(void)
+{
+    static const int8_t BELL[8] = {V_GLASS, V_CELESTA, V_ABELL, V_VBELL, V_CHIMES, V_VBELL, V_ABELL, V_CELESTA};
+    return BELL[(int32_t)((sky.moon - fm_floorf(sky.moon)) * 8.0f + 0.5f) & 7];
+}
+#define SOLO_DELAY_MS 600u               /* the soloist's notes, everywhere this late: the network's jitter under it */
+static uint32_t day_ms(void)             /* the shared clock's ms of the day (UTC); 0 none */
+{
+    uint32_t sec, ms;
+    return radio_clock(&sec, &ms) ? (sec % 86400u) * 1000u + ms : 0u;
+}
+/* a bell on a key's note (a MIDI note, an octave over the keys), in delay_ms; its key lit while it rings */
+static void bell(uint8_t note, uint32_t delay_ms)
+{
+    int32_t k = (int32_t)note - 12 - FIRST_KEY_NOTE;
+    float pan = k >= 0 && k < NKEYS ? ((float)k / (float)(NKEYS - 1) - 0.5f) * 1.2f : 0.0f;
+    uint32_t now = plat_ms();
+    eng_note(440.0f * fm_exp2f(((float)note - 69.0f) / 12.0f), 0.28f, pan, bell_voice(), delay_ms);
+    if (k >= 0 && k < NKEYS) {
+        ui.r_lit_at[k] = now + delay_ms;
+        ui.r_lit_end[k] = now + delay_ms + 350u;
+    }
+}
+
 static void radio_set(int on)
 {
     if (on && set.offline) {
@@ -951,6 +981,21 @@ static void radio_tick(void)
     }
     if (!radio_clock(&sec, &ms))
         return;
+    ui.r_solo = radio_solo(sec / 60u, ui.r_place);   /* the soloist: this minute's */
+    ui.r_left = 60u - sec % 60u;
+    {   /* the soloist's notes: each 600 ms after it played it, as everywhere (one far too late: dropped) */
+        uint32_t t, now_t = (sec % 86400u) * 1000u + ms;
+        uint8_t note;
+        while (radio_heard(&t, &note)) {
+            int32_t late = (int32_t)now_t - (int32_t)t;
+            if (late < -43200000)
+                late += 86400000;        /* across midnight */
+            else if (late > 43200000)
+                late -= 86400000;
+            if (late <= (int32_t)SOLO_DELAY_MS + 1500)
+                bell(note, late < (int32_t)SOLO_DELAY_MS ? SOLO_DELAY_MS - (uint32_t)late : 0u);
+        }
+    }
     slot = sec / 10u;
     if (slot == ui.r_slot)
         return;
@@ -1050,7 +1095,14 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
         }
         col[8] = C_RADIO;
     }
-    if (plat_ms() < ui.msg_until) {
+    if (ui.radio && ui.r_solo >= 0 && plat_ms() >= ui.msg_until) {   /* RADIO: who plays the bells, how long */
+        char sv[8];
+        put(put_int(sv, (int32_t)ui.r_left), " S");
+        q = put(l, "SOLO ");
+        put(q, ui.r_solo == 1 ? "YOU: PLAY" : ui.r_place[0] ? ui.r_place : "?");
+        line2(lines[9], l, sv);
+        col[9] = ui.r_solo == 1 ? C_SOLO : C_RADIO;
+    } else if (plat_ms() < ui.msg_until) {
         line2(lines[9], ui.msg[0], ui.msg[1]);
     } else {
         local_time(unix_now(), &y, &mo, &d, &h, &mi);
@@ -1190,6 +1242,16 @@ static void sky_frame(void)
                 }
                 cv_text(8, ty, &FONT_S, lines[i], scale(col[i], ui.alpha));
             }
+        if (ui.radio && ui.r_solo >= 0 && !(ui.r_solo == 1 && ui.r_left <= 5u && (plat_ms() / 250u & 1u))) {
+            uint16_t c = ui.r_solo == 1 ? C_SOLO : C_RADIO;   /* RADIO: green, the soloist (blinking its last 5 s);
+                                                               * blue, listening */
+            cv_rect(0, 0, 3, 48, c);
+            cv_rect(237, 0, 3, 48, c);
+            if (s == 0)
+                cv_rect(0, 0, 240, 3, c);
+            if (s == 4)
+                cv_rect(0, 45, 240, 3, c);
+        }
         cv_blit(0, (uint32_t)y0);
     }
 }
@@ -1635,6 +1697,12 @@ static void lights(void)
                 bk |= 1u << k;
         }
     }
+    if (ui.radio) {                      /* RADIO: the keys the bells ring, bright */
+        uint32_t now = plat_ms();
+        for (k = 0; k < NKEYS; k++)
+            if ((int32_t)(now - ui.r_lit_at[k]) >= 0 && (int32_t)(now - ui.r_lit_end[k]) < 0)
+                bk |= 1u << k;
+    }
     if (bb != ui.lit[0] || db != ui.lit[1] || bk != ui.lit[2] || dk != ui.lit[3]) {
         plat_lights(bb, bk, db, dk, 1);
         ui.lit[0] = bb;
@@ -1787,6 +1855,16 @@ static void input(void)
         sky.on = !sky.on;
         if (!sky.on)                     /* stopped: a quiet moment to save (saving silences the sound) */
             save();
+    }
+    if (ui.radio) {                      /* RADIO: the keys ring bells (the soloist's to everyone, 600 ms on) */
+        uint32_t t = day_ms();
+        for (k = 0; k < NKEYS; k++)
+            if (kdown >> k & 1u) {
+                uint8_t note = (uint8_t)(FIRST_KEY_NOTE + k + 12);
+                bell(note, 0);
+                if (ui.r_solo == 1 && t)
+                    radio_play(t, note);
+            }
     }
     for (k = 0; k < NKEYS && !ui.radio; k++)   /* (RADIO: the chords are the radio's) */
         if (keys >> k & 1u) {            /* a key's chord: held, and 10 s after */
@@ -1953,5 +2031,30 @@ void radio_counts(int *fm1, int *web)
 {
     *fm1 = 3;
     *web = 2;
+}
+/* the soloist: this one on even minutes, else one in Oslo who plays a slow arpeggio */
+int radio_solo(uint32_t minute, char *place)
+{
+    if (!host_radio)
+        return -1;
+    if (place)
+        copy(place, "59.91 10.75", 12);
+    return minute & 1u ? 0 : 1;
+}
+void radio_play(uint32_t t, uint8_t note) { (void)t, (void)note; }
+int radio_heard(uint32_t *t, uint8_t *note)
+{
+    static uint32_t next;
+    static const uint8_t ARP[6] = {69, 72, 76, 81, 76, 72};
+    uint32_t s, ms, now;
+    if (!host_radio || !radio_clock(&s, &ms) || !(s / 60u & 1u))
+        return 0;
+    now = (s % 86400u) * 1000u + ms;
+    if (now < next && next - now < 2000u)
+        return 0;
+    next = now + 450u;
+    *t = now;
+    *note = ARP[now / 450u % 6u];
+    return 1;
 }
 #endif

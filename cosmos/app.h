@@ -53,5 +53,9 @@ int radio_state(void);                   /* RADIO_* */
 const char *radio_why(void);             /* what went wrong last, or "" */
 int radio_clock(uint32_t *sec, uint32_t *ms);   /* the time now (unix s and ms): 1 = synced */
 int radio_slot(uint32_t slot, uint8_t *notes);  /* a 10 s slot's chord (unix s / 10): up to 3 MIDI notes; 0 the sky's */
-void radio_counts(int *fm1, int *web);   /* the FM-1s tuned in (this one too), the web page's visitors */
+void radio_counts(int *fm1, int *web);
+int radio_solo(uint32_t minute, char *place);   /* this minute's soloist: 1 this FM-1, 0 another (its place, 12 B), -1
+                                                 * none yet */
+void radio_play(uint32_t t, uint8_t note);       /* the soloist's key, to the others (t: ms of the day, UTC) */
+int radio_heard(uint32_t *t, uint8_t *note);     /* the soloist's next note heard: 1 = one */   /* the FM-1s tuned in (this one too), the web page's visitors */
 void cosmos_entropy(uint8_t *p, unsigned n);   /* app.c: for the TLS random generator */

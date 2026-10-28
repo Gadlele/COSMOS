@@ -5,7 +5,8 @@
  * harness, not part of the firmware.
  *   cc -O1 -DRD_HOST='"127.0.0.1"' -DRD_PORT=1883 -DRD_NTP_HOST='"127.0.0.1"' -DRD_NTP_PORT=12300 \
  *      -I../../cosmos main.c -lpthread -o radio_host
- *   ./radio_host ID [seconds]   (-DRD_KEEP_S=4: the pings and the watchdog, quickly) */
+ *   ./radio_host ID [seconds] [play]   (-DRD_KEEP_S=4: the pings and the watchdog, quickly; play: as the soloist,
+ *   a note every 400 ms, and each note heard printed with how late it came) */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,46 +59,50 @@ static int plat_net_task(void (*fn)(void *), void *arg, const char *name)
 }
 #include "radio.c"
 
+static uint32_t day_ms(void)                     /* the radio clock's ms of the day */
+{
+    uint32_t sec, ms;
+    return radio_clock(&sec, &ms) ? (sec % 86400u) * 1000u + ms : 0u;
+}
+
 int main(int argc, char **argv)
 {
-    uint32_t until, last = 0;
-    int last_state = -1;
+    uint32_t until, last = 0, last_note = 0;
+    int last_state = -1, play = argc > 3, last_solo = -2, n = 0;
     if (argc < 2) {
-        fprintf(stderr, "usage: radio_host ID [seconds]\n");
+        fprintf(stderr, "usage: radio_host ID [seconds] [play]\n");
         return 2;
     }
     until = plat_ms() + (argc > 2 ? (uint32_t)atoi(argv[2]) : 20u) * 1000u;
-    if (radio_on(1, argv[1], "41.90 12.50"))
+    if (radio_on(1, argv[1], getenv("PLACE") ? getenv("PLACE") : "41.90 12.50"))
         return 1;
     while ((int32_t)(plat_ms() - until) < 0) {
-        uint32_t s = 0, ms = 0;
+        uint32_t s = 0, ms = 0, t;
+        uint8_t note;
+        char place[12] = "";
+        int solo;
         if (radio_state() != last_state)
             printf("state %d %s\n", last_state = radio_state(), radio_why()), fflush(stdout);
-        if (plat_ms() - last >= 1000u) {          /* each second: the clock, who is there, the slots around now */
-            int f, w, k;
-            last = plat_ms();
-            if (radio_clock(&s, &ms)) {
-                struct timespec t;
-                clock_gettime(CLOCK_REALTIME, &t);
-                printf("clock %u.%03u (system %+ld ms)", (unsigned)s, (unsigned)ms,
-                       (long)((int64_t)s * 1000 + ms - ((int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000)));
-            } else {
-                printf("clock none");
-            }
-            radio_counts(&f, &w);
-            printf("  fm1 %d web %d  slots", f, w);
-            for (k = 0; k < 4 && s; k++) {
-                uint8_t n[3];
-                int c = radio_slot(s / 10u + (uint32_t)k, n), j;
-                printf(" [");
-                for (j = 0; j < c; j++)
-                    printf(j ? " %d" : "%d", n[j]);
-                printf("]");
-            }
-            printf("\n");
-            fflush(stdout);
+        solo = radio_clock(&s, &ms) ? radio_solo(s / 60u, place) : -1;
+        if (solo != last_solo)
+            printf("solo %s %s\n", solo == 1 ? "ME" : solo == 0 ? "other at" : "none", place), fflush(stdout),
+                last_solo = solo;
+        if (play && solo == 1 && plat_ms() - last_note >= 400u) {   /* a scale, round */
+            static const uint8_t SC[8] = {60, 62, 64, 65, 67, 69, 71, 72};
+            last_note = plat_ms();
+            radio_play(day_ms(), SC[n++ % 8]);
         }
-        usleep(5000);
+        while (radio_heard(&t, &note)) {
+            int32_t late = (int32_t)(day_ms() - t);
+            printf("heard %u late %d ms\n", (unsigned)note, (int)late), fflush(stdout);
+        }
+        if (plat_ms() - last >= 5000u) {          /* every 5 s: who is there */
+            int f, w;
+            last = plat_ms();
+            radio_counts(&f, &w);
+            printf("fm1 %d web %d\n", f, w), fflush(stdout);
+        }
+        usleep(2000);
     }
     radio_on(0, 0, 0);
     usleep(600000);
