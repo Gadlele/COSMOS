@@ -1,0 +1,296 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later — RADIO COSMOS's test player: a page that is a PLAYER on the radio
+     (cosmos-radio/v2/, as cosmos/radio.c): its star shows in the FM-1s' constellation; it plays by itself, or its keys -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Radio Test Player</title>
+<meta name="description" content="A test player for RADIO COSMOS: an FM-1 set as a LISTENER finds it in its constellation.">
+<meta name="theme-color" content="#06080e">
+<link rel="icon" href="../../img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+:root { --bg: #06080e; --panel: #0e121d; --rule: #1f2638; --text: #e9ecf5; --mid: #8f96ad; --accent: #cfd8ff; --on-accent: #0a0d18;
+        --glow: rgba(207, 216, 255, .14); --storm: #ffb38a; --live: #9fe6b8; --player: #6ee68c;
+        --body: 'IBM Plex Sans', system-ui, sans-serif; --display: DotGothic16, 'IBM Plex Mono', monospace;
+        --mono: 'IBM Plex Mono', ui-monospace, monospace; color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { background: var(--bg); }
+body { margin: 0; color: var(--text); font: 16px/1.5 var(--body); -webkit-tap-highlight-color: transparent; }
+.wrap { width: 100%; max-width: 720px; margin: 0 auto; padding: 16px 16px max(24px, env(safe-area-inset-bottom));
+        display: flex; flex-direction: column; gap: 18px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+header a { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none;
+           font: 400 18px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; }
+header img { width: 26px; height: 26px; image-rendering: pixelated; }
+.state { font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--mid);
+         display: flex; align-items: center; gap: 8px; }
+.state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--rule); }
+.state.live { color: var(--player); } .state.live::before { background: var(--player); box-shadow: 0 0 10px var(--player); }
+.state.wait::before { background: var(--accent); }
+.state.err { color: var(--storm); } .state.err::before { background: var(--storm); }
+h1 { margin: 4px 0 0; font: 400 clamp(30px, 7vw, 46px)/1.05 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.lead { margin: 8px 0 0; color: var(--mid); }
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 16px; padding: 16px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+label.k { display: block; font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--mid); margin: 0 0 8px; }
+input[type=number] { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--rule); border-radius: 10px;
+        padding: 10px 12px; font: 400 18px/1 var(--mono); }
+.big { font: 400 28px/1 var(--display); color: var(--player); }
+.row { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; }
+.btn { display: inline-flex; align-items: center; justify-content: center; padding: 0 18px; border-radius: 12px; border: 0;
+       font: 600 15px/1 var(--body); min-height: 46px; cursor: pointer; }
+.btn.primary { background: var(--player); color: var(--on-accent); box-shadow: 0 0 28px rgba(110,230,140,.2); }
+.btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--rule); }
+.btn[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.keys { position: relative; height: 150px; user-select: none; -webkit-user-select: none; touch-action: none; }
+.key { position: absolute; top: 0; border: 1px solid #000; border-radius: 0 0 8px 8px; padding: 0; cursor: pointer; }
+.key.w { height: 150px; background: #dfe3ef; z-index: 1; }
+.key.b { height: 92px; background: #1a1f2e; z-index: 2; }
+.key.on { background: var(--player) !important; box-shadow: 0 0 18px rgba(110,230,140,.6); }
+.log { font: 13px/1.6 var(--mono); color: var(--mid); min-height: 1.6em; word-break: break-word; }
+.how { color: var(--mid); font-size: 15px; } .how b { color: var(--text); } .how ol { margin: 8px 0 0; padding-left: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a href="../../"><img src="../../img/icon.png" alt="">COSMOS</a>
+    <span id="state" class="state">off air</span>
+  </header>
+  <section>
+    <h1>Radio test player</h1>
+    <p class="lead">This page is a PLAYER on RADIO COSMOS. While it is open and on air, an FM-1 set as a LISTENER finds its star in the constellation and hears what it plays, in its own sky's voice.</p>
+  </section>
+
+  <section class="card">
+    <div class="grid">
+      <div><label class="k">Its code</label><div class="big" id="code">–</div></div>
+      <div><label class="k" for="lat">Latitude</label><input id="lat" type="number" step="0.01" min="-90" max="90" value="51.48"></div>
+      <div><label class="k" for="lon">Longitude</label><input id="lon" type="number" step="0.01" min="-180" max="180" value="0.00"></div>
+      <div><label class="k">Listening</label><div class="big" id="nlist">–</div></div>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="air">Go on air</button>
+      <button class="btn ghost" id="auto" aria-pressed="true">Plays by itself</button>
+      <button class="btn ghost" id="hear" aria-pressed="false">Hear it here</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <label class="k">Or play it yourself</label>
+    <div class="keys" id="keys"></div>
+    <p class="log" id="log"></p>
+  </section>
+
+  <section class="how">
+    <b>How to test</b>
+    <ol>
+      <li>Here: <b>Go on air</b>.</li>
+      <li>On the FM-1 (COSMOS 0.22, WiFi on): <b>FX</b>, then <b>ALGO</b> to LISTENER.</li>
+      <li>This page's star appears in the constellation (at the place above): <b>SELECT</b> it, <b>SAVE</b> to listen.</li>
+    </ol>
+  </section>
+</div>
+
+<script>
+'use strict';
+const qs = new URLSearchParams(location.search);
+const BROKER = qs.get('broker') || 'wss://broker.hivemq.com:8884/mqtt';
+const T = 'cosmos-radio/v2/';
+const $ = id => document.getElementById(id);
+const enc = new TextEncoder(), dec = new TextDecoder();
+const ID_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+let ID = '';
+try { ID = localStorage.getItem('cosmos-radio-player') || ''; } catch (e) {}
+if (!/^[A-Z2-9]{5}$/.test(ID)) {
+  ID = 'W' + Array.from({ length: 4 }, () => ID_CHARS[Math.floor(Math.random() * ID_CHARS.length)]).join('');
+  try { localStorage.setItem('cosmos-radio-player', ID); } catch (e) {}
+}
+$('code').textContent = ID;
+
+// ---- the time: the site's Date header, its second's edge found (the FM-1s keep NTP time)
+let offset = 0;
+async function syncClock() {
+  try {
+    let prev = null;
+    for (let k = 0; k < 14; k++) {
+      const t0 = Date.now();
+      const r = await fetch(location.pathname + '?t=' + t0, { method: 'HEAD', cache: 'no-store' });
+      const t1 = Date.now(), d = r.headers.get('Date');
+      if (!d) return;
+      const s = Date.parse(d);
+      if (prev !== null && s !== prev) { offset = s - (t0 + t1) / 2; return; }
+      prev = s;
+      offset = s + 500 - (t0 + t1) / 2;
+      await new Promise(f => setTimeout(f, 90));
+    }
+  } catch (e) {}
+}
+const now = () => Date.now() + offset;
+const dayMs = () => Math.floor(now()) % 86400000;
+
+// ---- a small MQTT 3.1.1 client: CONNECT (with a will), SUBSCRIBE, PUBLISH at QoS 0, PINGREQ
+function mqttStr(s) { const b = typeof s === 'string' ? enc.encode(s) : s; return [b.length >> 8, b.length & 255, ...b]; }
+function mqttPacket(type, body) {
+  const len = []; let n = body.length;
+  do { let d = n & 127; n >>= 7; if (n) d |= 128; len.push(d); } while (n);
+  return new Uint8Array([type, ...len, ...body]);
+}
+class Mqtt {
+  constructor(url, id, will, onstate, onmsg, onopen) {
+    Object.assign(this, { url, id, will, onstate, onmsg, onopen, ok: false, closed: false, buf: new Uint8Array(0) });
+    this.open();
+  }
+  open() {
+    this.onstate('wait', 'tuning in');
+    const ws = this.ws = new WebSocket(this.url, 'mqtt');
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => {
+      const flags = 0x02 | (this.will ? 0x04 | 0x20 : 0);
+      const body = [...mqttStr('MQTT'), 4, flags, 0, 30, ...mqttStr(this.id)];
+      if (this.will) body.push(...mqttStr(this.will), 0, 0);
+      ws.send(mqttPacket(0x10, body));
+    };
+    ws.onmessage = ev => {
+      const a = new Uint8Array(ev.data), b = new Uint8Array(this.buf.length + a.length);
+      b.set(this.buf); b.set(a, this.buf.length);
+      let i = 0;
+      for (;;) {                                         // whole packets
+        let len = 0, mul = 1, h = i + 1, whole = false;
+        while (h < b.length && h < i + 5) { len += (b[h] & 127) * mul; mul *= 128; if (!(b[h++] & 128)) { whole = true; break; } }
+        if (!whole || h + len > b.length) break;
+        this.packet(b[i], b.subarray(h, h + len));
+        i = h + len;
+      }
+      this.buf = b.slice(i);
+    };
+    ws.onclose = () => {
+      this.ok = false; clearInterval(this.ping);
+      if (this.closed) return this.onstate('', 'offline');
+      this.onstate('err', 'reconnecting');
+      this.retry = setTimeout(() => this.open(), 2000);
+    };
+    clearInterval(this.ping);
+    this.ping = setInterval(() => { if (this.ok) ws.send(new Uint8Array([0xC0, 0])); }, 15000);
+  }
+  packet(type, p) {
+    if (type >> 4 === 2) {                               // CONNACK
+      if (p[1] !== 0) return this.onstate('err', 'refused');
+      this.ok = true; this.onstate('live', 'on air'); this.onopen();
+    } else if (type >> 4 === 3) {                        // PUBLISH
+      const tl = p[0] << 8 | p[1];
+      this.onmsg(dec.decode(p.subarray(2, 2 + tl)), dec.decode(p.subarray(2 + tl)));
+    }
+  }
+  subscribe(filters) {
+    const body = [0, 1];
+    for (const f of filters) body.push(...mqttStr(f), 0);
+    this.ws.send(mqttPacket(0x82, body));
+  }
+  publish(topic, msg, retain) {
+    if (!this.ok) return false;
+    this.ws.send(mqttPacket(retain ? 0x31 : 0x30, [...mqttStr(topic), ...enc.encode(msg)]));
+    return true;
+  }
+}
+
+
+// ---- on air: the presence (a player, at its place), the notes as "<t> <note>"
+let mq = null;
+const listeners = new Set();
+function place() {
+  const f = v => (Math.round(Math.max(-180, Math.min(180, +v || 0)) * 100) / 100).toFixed(2);
+  return f($('lat').value) + ' ' + f($('lon').value);
+}
+function setState(cls, text) { const s = $('state'); s.className = 'state ' + cls; s.textContent = text; }
+function onMessage(topic, msg) {
+  if (!topic.startsWith(T + 'here/')) return;
+  const id = topic.slice(T.length + 5), w = msg.trim().split(/\s+/);
+  if (w[2] === 'L' && w[3] === ID) listeners.add(id); else listeners.delete(id);
+  $('nlist').textContent = listeners.size;
+}
+function onAir() {
+  if (mq) {                                         // off air: the presence emptied
+    mq.publish(T + 'here/' + ID, '', true);
+    setTimeout(() => { mq.closed = true; try { mq.ws.close(); } catch (e) {} mq = null; setState('', 'off air'); }, 200);
+    $('air').textContent = 'Go on air';
+    return;
+  }
+  mq = new Mqtt(BROKER, 'cosmos-webplayer-' + ID, T + 'here/' + ID, setState, onMessage, () => {
+    listeners.clear();
+    mq.subscribe([T + 'here/+']);
+    mq.publish(T + 'here/' + ID, place() + ' P', true);
+  });
+  $('air').textContent = 'Go off air';
+}
+$('air').addEventListener('click', onAir);
+for (const el of [$('lat'), $('lon')]) el.addEventListener('change', () => { if (mq && mq.ok) mq.publish(T + 'here/' + ID, place() + ' P', true); });
+
+const sent = [];
+function play(note) {                               // a note: out, lit, and here if asked
+  if (mq && mq.ok) mq.publish(T + 'play/' + ID, dayMs() + ' ' + note, false);
+  const k = keys.querySelector('[data-n="' + note + '"]');
+  if (k) { k.classList.add('on'); setTimeout(() => k.classList.remove('on'), 250); }
+  sent.push(NAMES[note % 12] + (Math.floor(note / 12) - 1));
+  if (sent.length > 16) sent.shift();
+  $('log').textContent = sent.join(' ');
+  if (ac) ping(note);
+}
+
+// ---- by itself: a slow walk on a pentatonic scale, in phrases with rests
+const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const PENTA = [0, 2, 4, 7, 9];
+let step = 5, root = 62, phrase = 0;
+function walk() {
+  if ($('auto').getAttribute('aria-pressed') === 'true' && mq && mq.ok) {
+    if (phrase <= 0 && Math.random() < 0.35) { phrase = 4 + Math.floor(Math.random() * 6); setTimeout(walk, 1500 + Math.random() * 2000); return; }
+    step = Math.max(0, Math.min(11, step + [-2, -1, -1, 1, 1, 2, 0][Math.floor(Math.random() * 7)]));
+    if (Math.random() < 0.04) root = [57, 60, 62, 64, 65][Math.floor(Math.random() * 5)];
+    play(root + 12 * Math.floor(step / 5) + PENTA[step % 5]);
+    phrase--;
+  }
+  setTimeout(walk, [300, 450, 450, 600, 900][Math.floor(Math.random() * 5)]);
+}
+$('auto').addEventListener('click', e => e.target.setAttribute('aria-pressed', e.target.getAttribute('aria-pressed') === 'true' ? 'false' : 'true'));
+
+// ---- the keys: two octaves, C4 .. B5
+const keys = $('keys');
+(function () {
+  const LO = 60, HI = 83, whites = [];
+  for (let n = LO; n <= HI; n++) if (![1, 3, 6, 8, 10].includes(n % 12)) whites.push(n);
+  const W = 100 / whites.length;
+  for (let n = LO; n <= HI; n++) {
+    const b = [1, 3, 6, 8, 10].includes(n % 12), k = document.createElement('button');
+    k.className = 'key ' + (b ? 'b' : 'w');
+    k.dataset.n = n;
+    k.setAttribute('aria-label', NAMES[n % 12] + (Math.floor(n / 12) - 1));
+    if (b) { const wi = whites.indexOf(n - 1); k.style.left = 'calc(' + (wi + 1) * W + '% - ' + W * 0.3 + '%)'; k.style.width = W * 0.6 + '%'; }
+    else { k.style.left = whites.indexOf(n) * W + '%'; k.style.width = W + '%'; }
+    k.addEventListener('pointerdown', e => { e.preventDefault(); play(n); });
+    keys.appendChild(k);
+  }
+})();
+
+// ---- hearing it here: a soft bell (the FM-1s play it in their own sky's voice)
+let ac = null;
+function ping(note) {
+  const t = ac.currentTime, f = 440 * 2 ** ((note - 69) / 12), o = ac.createOscillator(), g = ac.createGain();
+  o.frequency.value = f; o.type = 'sine';
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.15, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 1.7);
+}
+$('hear').addEventListener('click', e => {
+  if (ac) { ac.close(); ac = null; e.target.setAttribute('aria-pressed', 'false'); return; }
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  e.target.setAttribute('aria-pressed', 'true');
+});
+
+syncClock();
+walk();
+</script>
+</body>
+</html>
