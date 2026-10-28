@@ -1,18 +1,14 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 the COSMOS contributors */
-/* RADIO COSMOS: the FM-1s that tune in play one chord sequence at the same time, each with its own sky. A task of
- * its own, while RADIO is on, keeps the time (SNTP) and a connection to a public MQTT broker (3.1.1, QoS 0, plain
- * TCP: the messages are notes), under "cosmos-radio/v1/":
- *   seq/<slot % 16>  (retained) "<slot> <note> <note> <note>": the chord of a 10 s slot (slot = unix time / 10), up
- *                    to three MIDI notes; none: the sky's own. The web page (web/site/radio) writes them, up to ten
- *                    slots ahead; each FM-1 locks the next slot's when the current one begins
- *   here/<id>        (retained) "<lat> <lon>" while an FM-1 is tuned in; its will (and leaving) empties it
- *   web/<id>         the same for the web page's visitors
- *   solo/<id>        the soloist's keys: "<t> <note> ..." (t: ms of the day, UTC; MIDI notes); each minute one FM-1
- *                    tuned in is the soloist, the same one everywhere (radio_solo: its id's hash mixed with the minute,
- *                    the lowest), and the others play its notes as bells 600 ms after they were played
- * Each FM-1 counts the others and the visitors from these. Included by net.c (lwIP's sockets); tools/radio_host
- * builds it on the computer's own, against a local broker. */
+/* RADIO COSMOS: players and listeners. An FM-1 tuned in is a PLAYER (its keys go out to whoever listens) or a
+ * LISTENER (it hears one player at a time, chosen on its RADIO page, the notes in its own sky's voice). A task of its
+ * own, while tuned in, keeps the time (SNTP) and a connection to a public MQTT broker (3.1.1, QoS 0, plain TCP: the
+ * messages are notes), under "cosmos-radio/v2/":
+ *   here/<id>   (retained) "<lat> <lon> P" a player, "<lat> <lon> L [<id>]" a listener and whom it hears; its will
+ *               (and leaving) empties it
+ *   play/<id>   a player's keys: "<t> <note> ..." (t: ms of the day, UTC; MIDI notes), heard 600 ms after they
+ *               were played, everywhere at once
+ * Included by net.c (lwIP's sockets); tools/radio_host builds it on the computer's own, against a local broker. */
 enum { RADIO_OFF, RADIO_NO_WIFI, RADIO_CONNECTING, RADIO_LIVE, RADIO_RETRY };   /* app.h's */
 #ifndef RD_HOST                                  /* the web page uses the same broker, over WebSocket */
 #define RD_HOST "broker.hivemq.com"
@@ -25,10 +21,9 @@ enum { RADIO_OFF, RADIO_NO_WIFI, RADIO_CONNECTING, RADIO_LIVE, RADIO_RETRY };   
 #ifndef RD_KEEP_S
 #define RD_KEEP_S 60
 #endif
-#define RD_TOPIC "cosmos-radio/v1/"
-#define RD_SLOTS 16                              /* the slots kept: the sequence's ring */
-#define RD_PEERS 32                              /* the FM-1s and the visitors counted, each */
-#define RD_EV 32                                 /* the soloist's notes waiting, each way */
+#define RD_TOPIC "cosmos-radio/v2/"
+#define RD_PEERS 24                              /* the FM-1s known at once */
+#define RD_EV 32                                 /* the notes waiting, each way */
 #define RD_NTP_EVERY_MS (15u * 60u * 1000u)
 
 static struct {
@@ -39,19 +34,20 @@ static struct {
     volatile int synced;
     volatile uint32_t c_ms0, c_sec0, c_frac0;
     uint32_t ntp_at;                             /* plat_ms of the last answer */
-    /* the sequence as the broker has it */
-    struct {
-        uint32_t slot;
-        uint8_t n, note[3];
-    } seq[RD_SLOTS];
-    uint32_t fm[RD_PEERS], web[RD_PEERS];        /* who is there: their ids, hashed (0: none) */
-    char fm_place[RD_PEERS][12];                 /* each FM-1's place, "41.90 12.50" */
+    struct {                                     /* who is tuned in (h 0: a free slot) */
+        uint32_t h, target, noted;               /* its id hashed; a listener's player, hashed; plat_ms of its last note */
+        char id[6], place[14];                   /* its id; its place, "41.90 12.50" */
+        uint8_t role;                            /* 1 a player, 2 a listener */
+    } peer[RD_PEERS];
     uint32_t me;                                 /* this FM-1's id, hashed */
-    volatile uint32_t solo_h, solo_prev;         /* the soloist's (this minute's, the last minute's) */
+    volatile int role;                           /* this one's: 1 a player, 2 a listener */
+    volatile uint32_t target;                    /* a listener's player, hashed (0 none) */
+    char target_id[6];
+    volatile int pres_dirty;                     /* the presence to send again (the role or the player changed) */
     struct {
         uint32_t t;
         uint8_t note;
-    } in[RD_EV], out[RD_EV];                     /* its notes: come, to go (when this one is the soloist) */
+    } in[RD_EV], out[RD_EV];                     /* the notes: heard (a listener's), to go (a player's) */
     volatile uint32_t in_w, in_r, out_w, out_r;
     char why[24];
 } rd;
@@ -153,17 +149,17 @@ static int send_pk(int sock, uint8_t *pk, uint8_t type, const uint8_t *q)
     pk[1] = (uint8_t)(q - pk - 2);
     return send_all(sock, pk, (int)(q - pk));
 }
-/* this FM-1's presence: retained, its place; empty: gone */
+/* this FM-1's presence: retained, its place, its role (and a listener's player); empty: gone */
 static int rd_presence(int sock, int here)
 {
-    uint8_t pk[80], *q = pk + 2;
+    uint8_t pk[96], *q = pk + 2;
     char t[40];
-    unsigned n;
     snprintf(t, sizeof t, RD_TOPIC "here/%s", rd.id);
     q = putstr(q, t);
-    n = here ? (unsigned)strlen(rd.where) : 0u;
-    memcpy(q, rd.where, n);
-    return send_pk(sock, pk, 0x31, q + n);       /* PUBLISH, retained, QoS 0 */
+    if (here)
+        q += snprintf((char *)q, 40, rd.role == 1 ? "%s P" : rd.target ? "%s L %s" : "%s L", rd.where, rd.target_id);
+    rd.pres_dirty = 0;
+    return send_pk(sock, pk, 0x31, q);           /* PUBLISH, retained, QoS 0 */
 }
 
 static int rd_connect(void)
@@ -186,7 +182,7 @@ static int rd_connect(void)
         rd_why("connect failed");
         return -1;
     }
-    ms = 40;                                      /* the loop comes round 25 times a second: the soloist's notes */
+    ms = 40;                                      /* the loop comes round 25 times a second: the notes */
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &ms, sizeof ms);
     ms = 5000;
     setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &ms, sizeof ms);
@@ -205,15 +201,11 @@ static int rd_connect(void)
         rd_why("send failed");
         return -1;
     }
-    q = pk + 2;                                   /* SUBSCRIBE: packet 1, three filters at QoS 0 */
+    q = pk + 2;                                   /* SUBSCRIBE: packet 1, two filters at QoS 0 */
     q = put16(q, 1);
-    q = putstr(q, RD_TOPIC "seq/+");
-    *q++ = 0;
     q = putstr(q, RD_TOPIC "here/+");
     *q++ = 0;
-    q = putstr(q, RD_TOPIC "web/+");
-    *q++ = 0;
-    q = putstr(q, RD_TOPIC "solo/+");
+    q = putstr(q, RD_TOPIC "play/+");
     *q++ = 0;
     if (send_pk(sock, pk, 0x82, q) || rd_presence(sock, 1)) {
         closesocket(sock);
@@ -232,21 +224,20 @@ static uint32_t rd_hash(const uint8_t *s, int n)  /* FNV-1a, never 0 */
         h = (h ^ s[i]) * 16777619u;
     return h ? h : 1u;
 }
-static int rd_peer(uint32_t *list, uint32_t h, int here)   /* its slot, or -1 */
+static int rd_find(uint32_t h, int add)         /* a peer's slot (add: a free one if none); -1 */
 {
     int i, free_i = -1;
     for (i = 0; i < RD_PEERS; i++) {
-        if (list[i] == h) {
-            if (!here)
-                list[i] = 0;
-            return here ? i : -1;
-        }
-        if (!list[i] && free_i < 0)
+        if (rd.peer[i].h == h)
+            return i;
+        if (!rd.peer[i].h && free_i < 0)
             free_i = i;
     }
-    if (here && free_i >= 0)
-        list[free_i] = h;
-    return here ? free_i : -1;
+    if (add && free_i >= 0) {
+        memset(&rd.peer[free_i], 0, sizeof rd.peer[free_i]);
+        rd.peer[free_i].h = h;
+    }
+    return add ? free_i : -1;
 }
 static int starts(const uint8_t *s, int n, const char *p)
 {
@@ -260,42 +251,48 @@ static int starts(const uint8_t *s, int n, const char *p)
 static void rd_take(const uint8_t *tp, int tn, const uint8_t *m, int mn)
 {
     int k;
-    if ((k = starts(tp, tn, RD_TOPIC "seq/"))) {  /* "<slot> <note> <note> <note>" */
-        uint32_t v[4] = {0, 0, 0, 0};
-        int n = 0, in = 0, i;
-        for (i = 0; i < mn && n < 4; i++) {
-            if (m[i] >= '0' && m[i] <= '9') {
-                v[n] = v[n] * 10u + (uint32_t)(m[i] - '0');
-                in = 1;
-            } else if (in) {
-                n++;
-                in = 0;
-            }
-        }
-        n += in && n < 4;
-        if (n >= 1) {
-            int s = (int)(v[0] % RD_SLOTS), j, c = 0;
-            rd.seq[s].slot = v[0];
-            for (j = 1; j < n; j++)
-                if (v[j] >= 24u && v[j] <= 108u)  /* C1 .. C8 */
-                    rd.seq[s].note[c++] = (uint8_t)v[j];
-            rd.seq[s].n = (uint8_t)c;
-        }
-    } else if ((k = starts(tp, tn, RD_TOPIC "here/"))) {
-        int i = rd_peer(rd.fm, rd_hash(tp + k, tn - k), mn > 0), j;
-        if (i >= 0) {                             /* its place */
-            for (j = 0; j < 11 && j < mn; j++)
-                rd.fm_place[i][j] = (char)m[j];
-            rd.fm_place[i][j] = 0;
-        }
-    } else if ((k = starts(tp, tn, RD_TOPIC "solo/"))) {   /* the soloist's notes (another's: not heard) */
-        uint32_t h = rd_hash(tp + k, tn - k), v = 0, t = 0;
-        int i, in = 0, odd = 0;
-        if (h == rd.me || (h != rd.solo_h && h != rd.solo_prev))
+    if ((k = starts(tp, tn, RD_TOPIC "here/"))) {   /* "<lat> <lon> P", "<lat> <lon> L [<id>]"; empty: gone */
+        uint32_t h = rd_hash(tp + k, tn - k);
+        int i = rd_find(h, mn > 0), j, f, w;
+        if (i < 0)
             return;
-        for (i = 0; i <= mn; i++) {
-            if (i < mn && m[i] >= '0' && m[i] <= '9') {
-                v = v * 10u + (uint32_t)(m[i] - '0');
+        if (!mn) {
+            rd.peer[i].h = 0;
+            return;
+        }
+        for (j = 0; j < 5 && k + j < tn; j++)
+            rd.peer[i].id[j] = (char)tp[k + j];
+        rd.peer[i].id[j] = 0;
+        {   /* its words: lat, lon (its place), its role, a listener's player */
+            int ws[4] = {0, 0, 0, 0}, we[4] = {0, 0, 0, 0}, n = 0, p = 0;
+            for (j = 0; j <= mn && n < 4; j++)
+                if (j == mn || m[j] == ' ') {
+                    if (j > p) {
+                        ws[n] = p;
+                        we[n++] = j;
+                    }
+                    p = j + 1;
+                }
+            for (j = f = 0; j < 2 && j < n; j++) {
+                for (w = ws[j]; w < we[j] && f < 13; w++)
+                    rd.peer[i].place[f++] = (char)m[w];
+                if (j == 0 && f < 13)
+                    rd.peer[i].place[f++] = ' ';
+            }
+            rd.peer[i].place[f] = 0;
+            rd.peer[i].role = n > 2 && m[ws[2]] == 'P' ? 1u : 2u;
+            rd.peer[i].target = n > 3 ? rd_hash(m + ws[3], we[3] - ws[3]) : 0u;
+        }
+    } else if ((k = starts(tp, tn, RD_TOPIC "play/"))) {   /* a player's notes: its star flashes; heard if chosen */
+        uint32_t h = rd_hash(tp + k, tn - k), v = 0, t = 0;
+        int i = rd_find(h, 0), j, in = 0, odd = 0;
+        if (i >= 0)
+            rd.peer[i].noted = plat_ms();
+        if (h == rd.me || h != rd.target || rd.role != 2)
+            return;
+        for (j = 0; j <= mn; j++) {
+            if (j < mn && m[j] >= '0' && m[j] <= '9') {
+                v = v * 10u + (uint32_t)(m[j] - '0');
                 in = 1;
             } else if (in) {
                 if (!odd)
@@ -310,8 +307,6 @@ static void rd_take(const uint8_t *tp, int tn, const uint8_t *m, int mn)
                 in = 0;
             }
         }
-    } else if ((k = starts(tp, tn, RD_TOPIC "web/"))) {
-        rd_peer(rd.web, rd_hash(tp + k, tn - k), mn > 0);
     }
 }
 
@@ -391,11 +386,15 @@ static int rd_session(int sock)
             memmove(buf, buf + h + len, (size_t)(have - h - (int)len));
             have -= h + (int)len;
         }
-        if (rd.out_r != rd.out_w) {               /* the soloist's notes, as they come */
+        if (rd.pres_dirty && rd.state == RADIO_LIVE && rd_presence(sock, 1)) {
+            rd_why("send failed");
+            return 1;
+        }
+        if (rd.out_r != rd.out_w) {               /* a player's notes, as they come */
             uint8_t pk[128], *q2 = pk + 2;
             char t[40];
             int c = 0;
-            snprintf(t, sizeof t, RD_TOPIC "solo/%s", rd.id);
+            snprintf(t, sizeof t, RD_TOPIC "play/%s", rd.id);
             q2 = putstr(q2, t);
             while (rd.out_r != rd.out_w && c < 6) {
                 q2 += snprintf((char *)q2, 20, "%s%u %u", c ? " " : "", (unsigned)rd.out[rd.out_r % RD_EV].t,
@@ -438,8 +437,7 @@ static void rd_task(void *arg)
             continue;
         }
         rd.state = RADIO_CONNECTING;
-        memset(rd.fm, 0, sizeof rd.fm);           /* the broker tells who is there again */
-        memset(rd.web, 0, sizeof rd.web);
+        memset(rd.peer, 0, sizeof rd.peer);       /* the broker tells who is there again */
         sock = rd_connect();
         if (sock >= 0) {
             int more = rd_session(sock);
@@ -464,13 +462,17 @@ static void rd_task(void *arg)
 }
 
 /* ---- the app's */
-int radio_on(int on, const char *id, const char *where)
+/* tuned in as a player (1) or a listener (2), with this FM-1's id and place; 0: off */
+int radio_on(int role, const char *id, const char *where)
 {
     unsigned i;
-    if (!on) {
+    if (!role) {
         rd.want = 0;
         return 0;
     }
+    if (role != rd.role)
+        rd.pres_dirty = 1;
+    rd.role = role;
     for (i = 0; i + 1u < sizeof rd.id && id[i]; i++)
         rd.id[i] = id[i];
     rd.id[i] = 0;
@@ -505,73 +507,44 @@ int radio_clock(uint32_t *sec, uint32_t *ms)
     *ms = tot % 1000u;
     return 1;
 }
-/* a slot's chord as the broker has it now: its notes (up to 3); 0 none (the sky's) */
-int radio_slot(uint32_t slot, uint8_t *notes)
+/* the players tuned in (this one left out), one at a time: i from 0; 0 = none at i. h its id hashed, id (6 B), place
+ * (14 B), noted_ms how long since its last note (~0u never) */
+int radio_player(int i, uint32_t *h, char *id, char *place, uint32_t *noted_ms)
 {
-    int s = (int)(slot % RD_SLOTS), i;
-    if (rd.seq[s].slot != slot)
-        return 0;
-    for (i = 0; i < rd.seq[s].n; i++)
-        notes[i] = rd.seq[s].note[i];
-    return rd.seq[s].n;
-}
-void radio_counts(int *fm1, int *web)
-{
-    int i, a = 0, b = 0;
-    for (i = 0; i < RD_PEERS; i++) {
-        a += rd.fm[i] != 0;
-        b += rd.web[i] != 0;
-    }
-    *fm1 = a;
-    *web = b;
-}
-
-/* ---- the soloist: this minute's, the same everywhere (each tuned-in FM-1's id hash mixed with the minute: the
- * lowest); 1 this one, 0 another (its place in place, 12 bytes), -1 none yet */
-static uint32_t rd_mix(uint32_t h, uint32_t minute)
-{
-    uint32_t x = h ^ (minute * 0x9E3779B1u);
-    x ^= x >> 16;
-    x *= 0x85EBCA6Bu;
-    x ^= x >> 13;
-    x *= 0xC2B2AE35u;
-    x ^= x >> 16;
-    return x;
-}
-int radio_solo(uint32_t minute, char *place)
-{
-    uint32_t best = 0xFFFFFFFFu, bh = 0;
-    int i, bi = -1, me_there = 0;
-    if (!rd.me || rd.state != RADIO_LIVE)
-        return -1;
-    for (i = 0; i < RD_PEERS; i++)
-        if (rd.fm[i]) {
-            uint32_t x = rd_mix(rd.fm[i], minute);
-            me_there |= rd.fm[i] == rd.me;
-            if (x < best || (x == best && rd.fm[i] < bh)) {
-                best = x;
-                bh = rd.fm[i];
-                bi = i;
-            }
-        }
-    if (!me_there && rd_mix(rd.me, minute) <= best) {   /* (its own presence not back yet) */
-        bh = rd.me;
-        bi = -1;
-    }
-    if (bh != rd.solo_h) {
-        rd.solo_prev = rd.solo_h;
-        rd.solo_h = bh;
-    }
-    if (bh == rd.me)
+    int k, n = 0;
+    for (k = 0; k < RD_PEERS; k++) {
+        if (!rd.peer[k].h || rd.peer[k].role != 1 || rd.peer[k].h == rd.me)
+            continue;
+        if (n++ != i)
+            continue;
+        *h = rd.peer[k].h;
+        memcpy(id, rd.peer[k].id, 6);
+        memcpy(place, rd.peer[k].place, 14);
+        *noted_ms = rd.peer[k].noted ? plat_ms() - rd.peer[k].noted : ~0u;
         return 1;
-    if (place) {
-        for (i = 0; i < 11 && bi >= 0 && rd.fm_place[bi][i]; i++)
-            place[i] = rd.fm_place[bi][i];
-        place[i] = 0;
     }
     return 0;
 }
-/* the soloist's key: a note played at t (ms of the day), to the others */
+/* a listener's player (h 0: none); its id goes out with the presence */
+void radio_listen(uint32_t h, const char *id)
+{
+    unsigned i;
+    for (i = 0; i < 5u && id && id[i]; i++)
+        rd.target_id[i] = id[i];
+    rd.target_id[i] = 0;
+    rd.target = h;
+    rd.in_r = rd.in_w;                            /* the last one's notes, not heard */
+    rd.pres_dirty = 1;
+}
+/* how many listen to this player */
+int radio_listeners(void)
+{
+    int k, n = 0;
+    for (k = 0; k < RD_PEERS; k++)
+        n += rd.peer[k].h && rd.peer[k].role == 2 && rd.peer[k].target == rd.me;
+    return n;
+}
+/* a player's key: a note played at t (ms of the day), to whoever listens */
 void radio_play(uint32_t t, uint8_t note)
 {
     if (rd.out_w - rd.out_r >= RD_EV)
@@ -580,7 +553,7 @@ void radio_play(uint32_t t, uint8_t note)
     rd.out[rd.out_w % RD_EV].note = note;
     rd.out_w++;
 }
-/* the soloist's next note heard: 1 = one (t its time, ms of the day) */
+/* the chosen player's next note heard: 1 = one (t its time, ms of the day) */
 int radio_heard(uint32_t *t, uint8_t *note)
 {
     if (rd.in_r == rd.in_w)

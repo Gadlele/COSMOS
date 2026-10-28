@@ -46,16 +46,18 @@ typedef struct {
 int net_fetch(int32_t lat100, int32_t lon100);   /* 0 = started; -1 = one is running */
 int net_busy(void);
 const net_res_t *net_result(void);
-/* RADIO COSMOS (radio.c, in net.c): the shared sequence, the clock, who is tuned in; a task of its own while on */
+/* RADIO COSMOS (radio.c, in net.c): players and listeners, the clock; a task of its own while tuned in */
 enum { RADIO_OFF, RADIO_NO_WIFI, RADIO_CONNECTING, RADIO_LIVE, RADIO_RETRY };
-int radio_on(int on, const char *id, const char *where);   /* on with this FM-1's id and place, or off; 0 = done */
+int radio_on(int role, const char *id, const char *where);   /* 1 a player, 2 a listener (this FM-1's id and place);
+                                                              * 0 off; 0 = done */
 int radio_state(void);                   /* RADIO_* */
 const char *radio_why(void);             /* what went wrong last, or "" */
 int radio_clock(uint32_t *sec, uint32_t *ms);   /* the time now (unix s and ms): 1 = synced */
-int radio_slot(uint32_t slot, uint8_t *notes);  /* a 10 s slot's chord (unix s / 10): up to 3 MIDI notes; 0 the sky's */
-void radio_counts(int *fm1, int *web);
-int radio_solo(uint32_t minute, char *place);   /* this minute's soloist: 1 this FM-1, 0 another (its place, 12 B), -1
-                                                 * none yet */
-void radio_play(uint32_t t, uint8_t note);       /* the soloist's key, to the others (t: ms of the day, UTC) */
-int radio_heard(uint32_t *t, uint8_t *note);     /* the soloist's next note heard: 1 = one */   /* the FM-1s tuned in (this one too), the web page's visitors */
+int radio_player(int i, uint32_t *h, char *id, char *place, uint32_t *noted_ms);   /* the i'th player on air (this
+                                                 * one left out): its id hashed, id (6 B), place (14 B), the ms since
+                                                 * its last note (~0u never); 0 = none at i */
+void radio_listen(uint32_t h, const char *id);   /* a listener's player (h 0: none) */
+int radio_listeners(void);               /* how many listen to this player */
+void radio_play(uint32_t t, uint8_t note);       /* a player's key, to whoever listens (t: ms of the day, UTC) */
+int radio_heard(uint32_t *t, uint8_t *note);     /* the chosen player's next note: 1 = one */
 void cosmos_entropy(uint8_t *p, unsigned n);   /* app.c: for the TLS random generator */
