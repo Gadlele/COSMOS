@@ -147,8 +147,14 @@ static struct {                          /* where the render is: each glides to 
 
 static int pads_init(void);
 static int stars_init(void);
+#define PS_MAX 256u                      /* the pads and stars a block ahead (eng_render): frames a block, at most */
+static int16_t *ps_buf;                  /* 2 halves of PS_MAX stereo frames (heap), PS_ONE to 1.0 */
+#define PS_ONE 8192.0f                   /* (room for a sum four times full scale) */
 static uint32_t pads_bytes(void), stars_bytes(void);
-uint32_t eng_bytes(void) { return (2u * DLY_N + AP_N + RV_N + 2u * CH_N) * 2u + SH_N * 2u + pads_bytes() + stars_bytes(); }
+uint32_t eng_bytes(void)
+{
+    return (2u * DLY_N + AP_N + RV_N + 2u * CH_N) * 2u + SH_N * 2u + 4u * PS_MAX * 2u + pads_bytes() + stars_bytes();
+}
 
 int eng_init(void)
 {
@@ -158,10 +164,13 @@ int eng_init(void)
     p = malloc((AP_N + RV_N) * 2u);
     ch_line = malloc(2u * CH_N * 2u);
     sh_line = malloc(SH_N * sizeof(int16_t));
-    if (!dly || !p || !ch_line || !sh_line || pads_init() || stars_init())
+    ps_buf = malloc(2u * 2u * PS_MAX * sizeof(int16_t));
+    if (!dly || !p || !ch_line || !sh_line || !ps_buf || pads_init() || stars_init())
         return -1;
     for (i = 0; i < SH_N; i++)
         sh_line[i] = 0;
+    for (i = 0; i < 4u * PS_MAX; i++)
+        ps_buf[i] = 0;
     for (i = 0; i < 2u * CH_N; i++)
         ch_line[i] = 0;
     for (i = 0; i < 2u * DLY_N; i++)
@@ -200,7 +209,7 @@ void eng_sky(const sky_t *s)
     target.drift = m.drift;
     target.storm = m.storm;
     target_engine = s->engine >= 0 && s->engine < ENG_N ? s->engine : 0;
-    target_voice = s->voice >= 0 && s->voice < NVOICE ? s->voice : 0;
+    target_voice = s->voice >= 0 && s->voice < V_N ? s->voice : 0;
     target_rhythm = s->rhythm;
     target_dlevel = s->drone_level;
     target.lit = m.lit;
@@ -313,14 +322,60 @@ static inline float drone_tick(drone_t *d, float idx, float ol, uint32_t pm, flo
     return sat(v2) * d->lvl * breath;
 }
 
+/* the second core's own noise (pads.c and stars.c run there: they draw from it, the drones from xs) */
+static uint32_t rnd2 = 0x9E3779B9u;
+static inline uint32_t xs2(void)
+{
+    rnd2 ^= rnd2 << 13;
+    rnd2 ^= rnd2 >> 17;
+    rnd2 ^= rnd2 << 5;
+    return rnd2;
+}
+static inline float rnd_pm2(void) { return (float)(xs2() & 0xFFFFu) * (1.0f / 32768.0f) - 1.0f; }   /* -1..1 */
 #include "pads.c"
 #include "stars.c"
 
+/* ---- the pads, the stars and the rhythm, a block ahead: the second core's job (one core: the same, after the
+ * block). A block's worth of their stereo sum in one half of ps_buf while the drones and the space read the other */
+extern int plat_cpu2_run(void (*fn)(uint32_t), uint32_t arg);
+extern int plat_cpu2_wait(void);
+extern void plat_cpu2_sync(void);
+static uint32_t ps_n, ps_cur;            /* the block's frames; the half the drones read now */
+static float ps_p0, ps_p1, ps_p2, ps_level;   /* its pink noise; the stars' level (the sky on, off) */
+static void ps_render(uint32_t half)
+{
+    int16_t *o = ps_buf + half * 2u * PS_MAX;
+    uint32_t i, n = ps_n;
+    pads_block(n, target_engine, target_don[1], target_notes, target_chord_n);
+    stars_block(n, target_voice, target_rhythm, target_on);
+    for (i = 0; i < n; i++) {
+        float w = rnd_pm2(), pk, l = 0.0f, r = 0.0f, pl = 0.0f, pr = 0.0f, sl = 0.0f, sr = 0.0f, g;
+        ps_p0 = 0.99765f * ps_p0 + w * 0.0990460f;
+        ps_p1 = 0.96300f * ps_p1 + w * 0.2965164f;
+        ps_p2 = 0.57000f * ps_p2 + w * 1.0526913f;
+        pk = (ps_p0 + ps_p1 + ps_p2 + w * 0.1848f) * 0.25f;
+        ps_level += ((target_on ? 1.0f : 0.0f) - ps_level) * 0.00008f;   /* the planet's voice */
+        g = rhythm_tick(&l, &r);         /* PULSAR's gate on the pad, its beat */
+        pads_tick(&pl, &pr, w, pk);
+        stars_tick(&sl, &sr, w);
+        o[2u * i] = (int16_t)(fm_clampf(l + pl * g + sl * ps_level, -3.99f, 3.99f) * PS_ONE);
+        o[2u * i + 1u] = (int16_t)(fm_clampf(r + pr * g + sr * ps_level, -3.99f, 3.99f) * PS_ONE);
+    }
+}
+static void ps_job(uint32_t half)
+{
+    plat_cpu2_sync();
+    ps_render(half);
+    plat_cpu2_sync();
+}
+
 void eng_render(int32_t *lr, uint32_t n, float gain)
 {
-    uint32_t i;
+    uint32_t i, ps_next;
+    int ps_two;
+    const int16_t *ps;
     float incR, incW, incC, ring, dry_amp, to0, k0, brA, decay, plv, slv, nzl, verb, idx, ol, chr;
-    if (!dly || !sh_line || !pd_p || !st_p) {   /* no lines (no heap): silence */
+    if (!dly || !sh_line || !pd_p || !st_p || !ps_buf || n > PS_MAX) {   /* no lines (no heap): silence */
         for (i = 0; i < 2u * n; i++)
             lr[i] = 0;
         return;
@@ -358,8 +413,14 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
     e.drift = glide(e.drift, target.drift, 0.005f);
     e.storm = glide(e.storm, target.storm, 0.004f);
     drone_block(&e.d[0], target.hz[0], e.pr[0], e.cutoff, n);
-    pads_block(n, target_engine, target_don[1], target_notes, target_chord_n);
-    stars_block(n, target_voice, target_rhythm, target_on);
+    if (n != ps_n) {                     /* the first block (or a new length): this one's now, the pipe primed */
+        ps_n = n;
+        ps_render(ps_cur);
+    }
+    ps_next = ps_cur ^ 1u;
+    plat_cpu2_sync();
+    ps_two = plat_cpu2_run(ps_job, ps_next);   /* the next block's, beside this one */
+    ps = ps_buf + ps_cur * 2u * PS_MAX;
     /* the pad's own chorus and reverb; AURORA's shimmer: more with Kp (the aurora) and the full moon */
     e.chr = glide(e.chr, PAD[target_engine].chorus, 0.003f);
     e.vadd = glide(e.vadd, PAD[target_engine].verb, 0.003f);
@@ -389,7 +450,6 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
         float white, nzA, a, l, r, ro, dL, dR, rin, o[4], y[4], outL, outR, pos, fr;
         uint32_t j, ri, rj;
         e.gate[0] += (to0 - e.gate[0]) * k0;
-        e.level += ((target_on ? 1.0f : 0.0f) - e.level) * 0.00008f;   /* the planet's voice */
         /* pink noise, a little different in each drone */
         white = (float)(int32_t)xs() * (1.0f / 2147483648.0f);
         e.p0 = 0.99765f * e.p0 + white * 0.0990460f;
@@ -400,15 +460,9 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
         e.phR += (uint32_t)incR;
         ro = wt(SINE, e.phR);
         a = a * dry_amp + a * ro * ring;
-        l = a;
-        r = a;
-        {   /* the pad on top (PULSAR's gate on it), the star voices */
-            float pl = 0.0f, pr = 0.0f, sl = 0.0f, sr = 0.0f, g = rhythm_tick(&l, &r);
-            pads_tick(&pl, &pr, white, (e.p0 + e.p1 + e.p2 + white * 0.1848f) * 0.25f);
-            stars_tick(&sl, &sr, white);
-            l += pl * g + sl * e.level;
-            r += pr * g + sr * e.level;
-        }
+        l = a + (float)ps[2u * i] * (1.0f / PS_ONE);   /* the pad on top (PULSAR's gate on it), the star voices: a
+                                                         * block ago's */
+        r = a + (float)ps[2u * i + 1u] * (1.0f / PS_ONE);
         {   /* the chorus: each side read back from a short line, its delay swaying slowly, the two a quarter turn apart */
             float pl, pr2, wl, wr, fl, fr2;
             uint32_t il, ir;
@@ -491,4 +545,8 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
         lr[2u * i] = (int32_t)(outL * gain);
         lr[2u * i + 1u] = (int32_t)(outR * gain);
     }
+    if (!ps_two || plat_cpu2_wait() != 0)
+        ps_render(ps_next);              /* one core (or it was given up): the next block's now */
+    plat_cpu2_sync();
+    ps_cur = ps_next;
 }

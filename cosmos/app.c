@@ -135,6 +135,8 @@ static struct {
     uint32_t splash_btn;                 /* the buttons held at its start: only a new press cuts it */
     /* RADIO COSMOS (FX): the chords from the shared sequence, everything else this sky's */
     int radio;                           /* tuned in */
+    int r_task;                          /* its task asked for (radio_on): once WiFi is connected, not to take the
+                                          * heap while it joins */
     char radio_id[6];                    /* this FM-1's: from its chip */
     uint32_t r_slot;                     /* the 10 s slot playing (unix s / 10); 0 none yet */
     uint8_t r_cur[3], r_next[3];         /* its chord, and the next one's, locked when this one began */
@@ -472,6 +474,7 @@ void app_init(void)
     sky.trend = nat.trend = set.trend;
     sky.sun = set.sun;
     sky.moon = set.moon;
+    plat_cpu2_set(1);                    /* the second core, for the pads and the stars (at power-on or never) */
     eng_ok = eng_init() == 0;            /* the delay and the reverb, before WiFi takes the heap */
     harmony();
     eng_sky(&sky);
@@ -910,17 +913,21 @@ static char *dec2(char *d, int32_t v)    /* hundredths as a decimal: "41.90", "-
 }
 static void radio_set(int on)
 {
-    char where[24];
     if (on && set.offline) {
         app_say("RADIO", "NEEDS WIFI (ENV)");
         return;
     }
     if (on && !ui.radio_id[0])
         radio_make_id();
-    dec2(put(dec2(where, set.lat100), " "), set.lon100);
-    if (radio_on(on, ui.radio_id, where) != 0) {
+#ifdef PLAT_WEB
+    if (on) {
         app_say("RADIO", "NOT HERE");
         return;
+    }
+#endif
+    if (!on && ui.r_task) {
+        radio_on(0, 0, 0);
+        ui.r_task = 0;
     }
     ui.radio = on;
     ui.r_slot = 0;
@@ -936,6 +943,11 @@ static void radio_tick(void)
     if (set.offline) {
         radio_set(0);
         return;
+    }
+    if (!ui.r_task && plat_wifi_state() == WIFI_CONNECTED) {   /* its task, once connected */
+        char where[24];
+        dec2(put(dec2(where, set.lat100), " "), set.lon100);
+        ui.r_task = radio_on(1, ui.radio_id, where) == 0;
     }
     if (!radio_clock(&sec, &ms))
         return;
@@ -1027,7 +1039,7 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
         col[8] = C_MID;
     }
     if (ui.radio) {                      /* RADIO: who is tuned in; the chord now and the next */
-        int st = radio_state(), f = 0, w = 0;
+        int st = ui.r_task ? radio_state() : RADIO_NO_WIFI, f = 0, w = 0;
         uint32_t s0, ms0;
         if (st == RADIO_LIVE && radio_clock(&s0, &ms0)) {
             radio_counts(&f, &w);
@@ -1251,7 +1263,7 @@ static void settings_frame(void)
             c = C_MID;
         } else if (i == 13) {
             int b = plat_battery();
-            q = put(t, "CPU ");
+            q = put(t, plat_cpu2_on() ? "CPU2 " : "CPU ");   /* the load; on two cores, CPU2 */
             q = put(put_int(q, (int32_t)plat_cpu_pct()), "% HEAP ");
             q = put(put_int(q, (int32_t)((shim_heap_size - shim_heap_used) / 1024u)), "K BAT ");
             if (b == 4)

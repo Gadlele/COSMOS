@@ -124,7 +124,7 @@ static inline float reso(float *s, float c, float r2, float x)
     s[0] = y;
     return y;
 }
-static inline float rnd01(void) { return (float)(xs() & 0xFFFFu) * (1.0f / 65536.0f); }
+static inline float rnd01(void) { return (float)(xs2() & 0xFFFFu) * (1.0f / 65536.0f); }
 static inline float sin01(float x) { return wt(SINE, (uint32_t)(x * 4294967296.0f)); }   /* sin(2 pi x), x 0..1 */
 
 static const float VOWEL[4][3][2] = {   /* a, o, u, e: three formants, Hz and level */
@@ -164,7 +164,7 @@ static void voice_start(voice_t *v, int32_t pad, float hz, int32_t idx)
     v->pan = ((float)idx / 1.5f - 1.0f) * 0.6f;   /* the chord spread across the stereo */
     v->aux = 1.0f;
     for (k = 0; k < 4; k++)
-        v->ph[k] = xs();
+        v->ph[k] = xs2();
     for (k = 0; k < 6; k++)
         v->rs[k][0] = v->rs[k][1] = 0.0f;
     if (pad == P_RINGS) {               /* three modes, a few hertz wide */
@@ -369,13 +369,13 @@ static inline void grain_spawn(void)
         }
     if (q < 0)
         return;
-    j = (int32_t)(xs() % NV);
+    j = (int32_t)(xs2() % NV);
     for (k = 0; k < NV && !(pd.v[(j + k) % NV].held && pd.v[(j + k) % NV].pad == P_QUASAR); k++)
         ;
     if (k == NV)
         return;
     hz = pd.v[(j + k) % NV].hz * (rnd01() < 0.4f ? 2.0f : 1.0f) * (1.0f + 0.0023f * (rnd01() - 0.5f) * 2.0f);
-    pd.g[q].ph = xs();
+    pd.g[q].ph = xs2();
     pd.g[q].inc = (uint32_t)(hz * TO32);
     pd.g[q].pos = 0.0f;
     pd.g[q].len = 2600.0f * (0.5f + rnd01());

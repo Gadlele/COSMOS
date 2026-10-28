@@ -150,7 +150,7 @@ static void star_start(float hz, float amp, float pan, int32_t type, int32_t wai
         {   /* a burst of noise, softened: a finger, not a plectrum */
             float sm = 0.0f;
             for (k = 0; k < KS_N; k++) {
-                sm += 0.5f * (rnd_pm() - sm);
+                sm += 0.5f * (rnd_pm2() - sm);
                 b[k] = (int16_t)(k < n ? sm * 28000.0f : 0.0f);
             }
         }
@@ -332,6 +332,9 @@ static inline float rhythm_tick(float *l, float *r)
 static const float VGAIN[V_N] = {1.0f, 0.5f, 1.9f, 0.95f, 0.95f, 0.95f, 1.1f, 1.1f, 0.8f, 1.2f,
                                  0.72f, 1.35f, 3.0f, 0.9f, 1.35f, 1.05f, 2.0f, 0.9f, 1.1f, 1.15f, 1.1f};
 
+/* the voices whose level is their first envelope (d[0]): they end once it has faded out (the rest keep their life) */
+static const uint8_t DIES[V_N] = {1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1};
+
 /* a sample of the star voices, added to l and r; w a white noise sample */
 static inline void stars_tick(float *l, float *r, float w)
 {
@@ -455,7 +458,7 @@ static inline void stars_tick(float *l, float *r, float w)
                     continue;
                 gt = (g - j * 750u) % 1500u;
                 if (gt == 0u)
-                    v->inc[j] = v->inc[2] << ((xs() & 0xFFu) < 77u ? 1 : 0);
+                    v->inc[j] = v->inc[2] << ((xs2() & 0xFFu) < 77u ? 1 : 0);
                 x += wt(SINE, v->ph[j] += v->inc[j]) * (0.5f - 0.5f * wt(SINE, gt * 2863311u + 0x40000000u));
             }
             x *= 0.7f;
@@ -517,5 +520,13 @@ static inline void stars_tick(float *l, float *r, float w)
         v->t += 1.0f;
         if (v->t > v->life)
             v->on = 0;
+        else if (((uint32_t)v->t & 255u) == 0u) {
+            int32_t k;
+            if (v->t > 4410.0f && v->d[0] * v->amp < 0.0003f && DIES[v->type])
+                v->on = 0;               /* faded under hearing (-70 dB): done early, its time for the others */
+            for (k = 0; k < 4; k++)      /* a spent envelope to 0, before it goes denormal (and slow) */
+                if (v->d[k] < 1e-12f && v->k[k] <= 1.0f)
+                    v->d[k] = 0.0f;
+        }
     }
 }
