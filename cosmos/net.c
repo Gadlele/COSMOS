@@ -190,7 +190,7 @@ static int ieq_prefix(const char *a, const char *p)    /* a starts with p, ignor
 static int https_get(const char *host, const char *path, char *body, int max)
 {
     conn_t c = {-1, 0, 0};
-    char req[256], line[160];
+    char req[384], line[160];                     /* the request: the weather's path is long (~155 B) */
     struct hostent *he;
     struct sockaddr_in a;
     int n, status = 0, len = 0;
@@ -230,6 +230,11 @@ static int https_get(const char *host, const char *path, char *body, int max)
     }
     n = snprintf(req, sizeof req, "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: COSMOS-FM1\r\n"
                  "Accept: application/json\r\nConnection: close\r\n\r\n", path, host);
+    if (n <= 0 || n >= (int)sizeof req) {         /* cut short, it would go out as a bad request (HTTP 400) */
+        conn_close(&c);
+        why_to("request too long");
+        return -1;
+    }
     if (br_sslio_write_all(&c.tls->io, req, (size_t)n) < 0 || br_sslio_flush(&c.tls->io) < 0) {
         snprintf(res.why, sizeof res.why, "tls error %d", br_ssl_engine_last_error(&c.tls->cc.eng));
         conn_close(&c);
