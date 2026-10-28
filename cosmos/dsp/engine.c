@@ -21,6 +21,10 @@
 #include "engine.h"
 #include "fastmath.h"
 #include "waves.h"
+/* the sine the voices read, copied into RAM at eng_init: from the flash every read could wait on it (the FM-1's
+ * flash is behind a cache the code and WiFi share); the flash's until then */
+static const int16_t *sine_tab = SINE;
+#define SINE sine_tab
 
 extern void *malloc(unsigned long n);
 
@@ -165,6 +169,14 @@ int eng_init(void)
     ch_line = malloc(2u * CH_N * 2u);
     sh_line = malloc(SH_N * sizeof(int16_t));
     ps_buf = malloc(2u * 2u * PS_MAX * sizeof(int16_t));
+    {
+        int16_t *t = malloc(WAVE_N * sizeof(int16_t));
+        if (t) {
+            for (i = 0; i < WAVE_N; i++)
+                t[i] = sine_tab[i];
+            sine_tab = t;
+        }
+    }
     if (!dly || !p || !ch_line || !sh_line || !ps_buf || pads_init() || stars_init())
         return -1;
     for (i = 0; i < SH_N; i++)

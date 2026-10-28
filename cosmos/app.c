@@ -1267,8 +1267,12 @@ static void settings_frame(void)
         } else if (i == 13) {            /* the load; one core: why (the second's give-up code); the glitches */
             q = put(t, plat_cpu2_on() ? "CPU2 " : "CPU ");
             q = put(put_int(q, (int32_t)plat_cpu_pct()), "%");
-            if (!plat_cpu2_on())
+            if (!plat_cpu2_on()) {       /* G: the second core's give-up code; F: the boots that failed (under 30 s) */
                 q = put_int(put(q, plat_cpu2_barred() ? " B" : " G"), plat_cpu2_gave_up());
+#ifndef PLAT_HOST
+                q = put_int(put(q, " F"), (int32_t)bootguard.failed);
+#endif
+            }
             q = put_int(put(q, " XR "), (int32_t)(plat_xruns() > 9999u ? 9999u : plat_xruns()));
             put(put_int(put(q, " H"), (int32_t)((shim_heap_size - shim_heap_used) / 1024u)), "K");
             c = C_LOW;
