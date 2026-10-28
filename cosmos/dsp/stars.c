@@ -30,7 +30,7 @@ static const int8_t PAD_VOICE[ENG_N] = {V_DROPS, V_ABELL, V_STRING, V_WHISTLE, V
                                         V_MUSICBOX, V_RBELL, V_GLINT, V_BONGO, V_GLASS, V_NBELL, V_SYNTH};
 int32_t pad_voice(int32_t pad) { return pad >= 0 && pad < ENG_N ? PAD_VOICE[pad] : V_DROPS; }
 
-#define NS 12                            /* star voices at once */
+#define NS 8                             /* star voices at once (the quietest gives way) */
 #define KS_N 256u                        /* a harp string's line: notes from 175 Hz (lower ones an octave up) */
 typedef struct {
     int32_t type, wait;                  /* its voice; samples before it sounds */
@@ -109,7 +109,7 @@ static void envs(star_t *v, float t0, float t1, float t2, float ti, float life)
     v->k[1] = decay(t1);
     v->k[2] = decay(t2);
     v->k[3] = decay(ti);
-    v->life = life * SR;
+    v->life = fm_minf(life, 4.0f) * SR;  /* 4 s at most: the long bells' tails, under the rest by then */
 }
 
 static void star_start(float hz, float amp, float pan, int32_t type, int32_t wait)
@@ -522,8 +522,8 @@ static inline void stars_tick(float *l, float *r, float w)
             v->on = 0;
         else if (((uint32_t)v->t & 255u) == 0u) {
             int32_t k;
-            if (v->t > 4410.0f && v->d[0] * v->amp < 0.0003f && DIES[v->type])
-                v->on = 0;               /* faded under hearing (-70 dB): done early, its time for the others */
+            if (v->t > 4410.0f && v->d[0] * v->amp < 0.001f && DIES[v->type])
+                v->on = 0;               /* faded under hearing (-60 dB): done early, its time for the others */
             for (k = 0; k < 4; k++)      /* a spent envelope to 0, before it goes denormal (and slow) */
                 if (v->d[k] < 1e-12f && v->k[k] <= 1.0f)
                     v->d[k] = 0.0f;

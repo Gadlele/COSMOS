@@ -338,6 +338,9 @@ static inline float rnd_pm2(void) { return (float)(xs2() & 0xFFFFu) * (1.0f / 32
 /* ---- the pads, the stars and the rhythm, a block ahead: the second core's job (one core: the same, after the
  * block). A block's worth of their stereo sum in one half of ps_buf while the drones and the space read the other */
 extern int plat_cpu2_run(void (*fn)(uint32_t), uint32_t arg);
+extern uint32_t plat_ticks24(void);
+static volatile uint32_t ld_main, ld_pads, ld_stars;   /* each part's time a block (24 ticks a us), smoothed */
+#define LD_SMOOTH(a, v) ((a) = ((a) * 15u + (v)) / 16u)
 extern int plat_cpu2_wait(void);
 extern void plat_cpu2_sync(void);
 static uint32_t ps_n, ps_cur;            /* the block's frames; the half the drones read now */
@@ -345,22 +348,30 @@ static float ps_p0, ps_p1, ps_p2, ps_level;   /* its pink noise; the stars' leve
 static void ps_render(uint32_t half)
 {
     int16_t *o = ps_buf + half * 2u * PS_MAX;
-    uint32_t i, n = ps_n;
+    uint32_t i, n = ps_n, t0 = plat_ticks24(), t1;
     pads_block(n, target_engine, target_don[1], target_notes, target_chord_n);
     stars_block(n, target_voice, target_rhythm, target_on);
-    for (i = 0; i < n; i++) {
-        float w = rnd_pm2(), pk, l = 0.0f, r = 0.0f, pl = 0.0f, pr = 0.0f, sl = 0.0f, sr = 0.0f, g;
+    for (i = 0; i < n; i++) {            /* the pads, under PULSAR's gate, and its beat */
+        float w = rnd_pm2(), pk, l = 0.0f, r = 0.0f, pl = 0.0f, pr = 0.0f, g;
         ps_p0 = 0.99765f * ps_p0 + w * 0.0990460f;
         ps_p1 = 0.96300f * ps_p1 + w * 0.2965164f;
         ps_p2 = 0.57000f * ps_p2 + w * 1.0526913f;
         pk = (ps_p0 + ps_p1 + ps_p2 + w * 0.1848f) * 0.25f;
-        ps_level += ((target_on ? 1.0f : 0.0f) - ps_level) * 0.00008f;   /* the planet's voice */
-        g = rhythm_tick(&l, &r);         /* PULSAR's gate on the pad, its beat */
+        g = rhythm_tick(&l, &r);
         pads_tick(&pl, &pr, w, pk);
-        stars_tick(&sl, &sr, w);
-        o[2u * i] = (int16_t)(fm_clampf(l + pl * g + sl * ps_level, -3.99f, 3.99f) * PS_ONE);
-        o[2u * i + 1u] = (int16_t)(fm_clampf(r + pr * g + sr * ps_level, -3.99f, 3.99f) * PS_ONE);
+        o[2u * i] = (int16_t)(fm_clampf(l + pl * g, -3.99f, 3.99f) * PS_ONE);
+        o[2u * i + 1u] = (int16_t)(fm_clampf(r + pr * g, -3.99f, 3.99f) * PS_ONE);
     }
+    t1 = plat_ticks24();
+    for (i = 0; i < n; i++) {            /* the star voices on them */
+        float sl = 0.0f, sr = 0.0f;
+        ps_level += ((target_on ? 1.0f : 0.0f) - ps_level) * 0.00008f;   /* the planet's voice */
+        stars_tick(&sl, &sr, rnd_pm2());
+        o[2u * i] = (int16_t)fm_clampf((float)o[2u * i] + sl * ps_level * PS_ONE, -32767.0f, 32767.0f);
+        o[2u * i + 1u] = (int16_t)fm_clampf((float)o[2u * i + 1u] + sr * ps_level * PS_ONE, -32767.0f, 32767.0f);
+    }
+    LD_SMOOTH(ld_pads, t1 - t0);
+    LD_SMOOTH(ld_stars, plat_ticks24() - t1);
 }
 static void ps_job(uint32_t half)
 {
@@ -371,7 +382,7 @@ static void ps_job(uint32_t half)
 
 void eng_render(int32_t *lr, uint32_t n, float gain)
 {
-    uint32_t i, ps_next;
+    uint32_t i, ps_next, tm = plat_ticks24();
     int ps_two;
     const int16_t *ps;
     float incR, incW, incC, ring, dry_amp, to0, k0, brA, decay, plv, slv, nzl, verb, idx, ol, chr;
@@ -545,8 +556,18 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
         lr[2u * i] = (int32_t)(outL * gain);
         lr[2u * i + 1u] = (int32_t)(outR * gain);
     }
+    LD_SMOOTH(ld_main, plat_ticks24() - tm);
     if (!ps_two || plat_cpu2_wait() != 0)
         ps_render(ps_next);              /* one core (or it was given up): the next block's now */
     plat_cpu2_sync();
     ps_cur = ps_next;
+}
+
+/* each part's load in % of a block's time: the drones and the space (the first core), the pads, the stars */
+void eng_load(uint32_t *main, uint32_t *pads, uint32_t *stars)
+{
+    uint32_t budget = ps_n ? ps_n * 544u : 1u;   /* 24 MHz ticks in a block at 44.1 kHz */
+    *main = ld_main * 100u / budget;
+    *pads = ld_pads * 100u / budget;
+    *stars = ld_stars * 100u / budget;
 }
