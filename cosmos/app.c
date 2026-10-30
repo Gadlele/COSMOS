@@ -902,12 +902,6 @@ static void radio_set(int role)
         app_say("RADIO", "NEEDS WIFI (ENV)");
         return;
     }
-#ifdef PLAT_WEB
-    if (role) {
-        app_say("RADIO", "ON THE FM-1 ONLY");
-        return;
-    }
-#endif
     if (role && !ui.radio_id[0])
         radio_make_id();
     if (role != 2 && ui.r_target) {      /* no longer listening */
@@ -939,7 +933,11 @@ static void radio_tick(void)
         radio_set(0);
         return;
     }
+#ifdef PLAT_WEB
+    if (!ui.r_task) {                    /* (in the browser: the page's own connection) */
+#else
     if (!ui.r_task && plat_wifi_state() == WIFI_CONNECTED) {   /* its task, once connected */
+#endif
         char where[24];
         dec2(put(dec2(where, set.lat100), " "), set.lon100);
         ui.r_task = radio_on(ui.radio, ui.radio_id, where) == 0;
@@ -2148,21 +2146,22 @@ int net_fetch(int32_t lat100, int32_t lon100)
 }
 int net_busy(void) { return 0; }
 const net_res_t *net_result(void) { return &host_res; }
-/* RADIO: on the computer five players on air (one plays a slow arpeggio when listened to); in the browser none */
+/* RADIO: on the computer five players on air (one plays a slow arpeggio when listened to); in the browser the real
+ * radio, through the page (radio.c's RD_WEB) */
+#ifdef PLAT_WEB
+#define RD_WEB
+#include "radio.c"
+#else
 static int host_radio;
 static uint32_t host_on_at;
 static uint32_t host_target;
 int radio_on(int role, const char *id, const char *where)
 {
     (void)id, (void)where;
-#ifdef PLAT_WEB
-    return role ? -1 : 0;
-#else
     if (role && !host_radio)
         host_on_at = plat_ms();
     host_radio = role;
     return 0;
-#endif
 }
 int radio_state(void) { return host_radio ? RADIO_LIVE : RADIO_OFF; }
 const char *radio_why(void) { return ""; }
@@ -2224,4 +2223,5 @@ int radio_heard(uint32_t *t, uint8_t *kind, uint8_t *note)
     *note = ARP[now / 450u % 6u];
     return 1;
 }
+#endif /* PLAT_WEB */
 #endif

@@ -178,6 +178,13 @@ named takes the one naming it; both naming each other, the pair is made; unanswe
 free again. The messages are notes, not sound. The id is 5 characters from the chip's own ID. `tools/radio_host`
 runs it on a computer against a local broker.
 
+In the browser emulator (/COSMOS/try/) the RADIO is the real one, on air with the FM-1s: the same `radio.c`, built
+with RD_WEB, talks through the page instead of sockets. Its half in the worklet (`cosmos/web/emu/app_worklet.js`)
+takes what goes out ("C <id>", "D", "P <retain> <topic> <message>", via web.c's `web_radio_*` exports) and puts in
+what comes; the page's half (`cosmos/web/emu/app.js`) is the MQTT client over WebSocket
+(wss://broker.hivemq.com:8884/mqtt), and keeps the clock from the site's Date header. Each browser has an id of its
+own ("E" and four characters, kept in the browser).
+
 The test player (`web/site/radio-player`, published at /COSMOS/radio/player/) is a web page that is a player: on air
 at a place it is given, it pairs like an FM-1 (PAD or BELLS), plays by itself (the bells a slow pentatonic walk, the
 pad long notes) or its keys (the FM-1's 27), and lights the partner's notes, so one FM-1 can try a pair alone.

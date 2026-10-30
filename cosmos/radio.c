@@ -10,8 +10,13 @@
  *               "<lat> <lon> L [<id>]" a listener and whom it hears; its will (and leaving) empties it
  *   play/<id>   a player's keys: "<t> <k><note> ..." (t: ms of the day, UTC; k: b a bell, p a pad note held, o let
  *               go; MIDI notes): the partner plays them at once, the listeners 600 ms after they were played
- * Included by net.c (lwIP's sockets); tools/radio_host builds it on the computer's own, against a local broker. */
+ * Included by net.c (lwIP's sockets); tools/radio_host builds it on the computer's own, against a local broker. In
+ * the browser emulator (RD_WEB, from app.c) the same radio talks through the page instead: the worklet takes what
+ * goes out (rdw_poll, web.c's web_radio_poll) and the page's MQTT over WebSocket brings what comes
+ * (cosmos/web/emu/app.js). */
+#ifndef RD_WEB
 enum { RADIO_OFF, RADIO_NO_WIFI, RADIO_CONNECTING, RADIO_LIVE, RADIO_RETRY };   /* app.h's */
+#endif
 #ifndef RD_HOST                                  /* the web page uses the same broker, over WebSocket */
 #define RD_HOST "broker.hivemq.com"
 #define RD_PORT 1883
@@ -57,16 +62,18 @@ static struct {
     volatile uint32_t in_w, in_r, out_w, out_r;
     char why[24];
 } rd;
-static volatile int dns_busy;                    /* gethostbyname is lwIP's, one at a time (the weather's fetch too) */
-
 static void rd_why(const char *s)
 {
     unsigned i;
     for (i = 0; i + 1u < sizeof rd.why && s[i]; i++)
         rd.why[i] = s[i];
     rd.why[i] = 0;
+#ifndef RD_WEB
     shim_log(s);
+#endif
 }
+#ifndef RD_WEB
+static volatile int dns_busy;                    /* gethostbyname is lwIP's, one at a time (the weather's fetch too) */
 static int rd_resolve(const char *host, struct sockaddr_in *a, int port)
 {
     struct hostent *he;
@@ -221,6 +228,8 @@ static int rd_connect(void)
     }
     return sock;
 }
+
+#endif /* RD_WEB */
 
 /* ---- what comes */
 static uint32_t rd_hash(const uint8_t *s, int n)  /* FNV-1a, never 0 */
@@ -405,6 +414,7 @@ static void rd_pair(void)
         }
 }
 
+#ifndef RD_WEB
 /* one connection's life: its packets until it ends (or the player is done); 0 = the player is done */
 static int rd_session(int sock)
 {
@@ -593,6 +603,115 @@ int radio_on(int role, const char *id, const char *where)
     }
     return 0;
 }
+#else /* RD_WEB */
+/* ---- the browser's: what goes out, as lines for the page ("C <id>" connect, its will emptying here/<id>; "D"
+ * disconnect; "P <retain> <topic> <message>"), taken by the worklet each few ms (rdw_poll: web.c exports these as
+ * web_radio_*); what comes, a message at a time (rdw_in); the connection's state and the clock, the page's */
+static char rd_out[2048];
+static unsigned rd_out_n;
+static uint8_t rd_in[512];
+static void rd_line(const char *a, const char *b, const char *c)   /* a line out: its words (b, c: or 0) */
+{
+    char l[192];
+    int n = snprintf(l, sizeof l, "%s%s%s%s%s\n", a, b ? " " : "", b ? b : "", c ? " " : "", c ? c : "");
+    if (n > 0 && n < (int)sizeof l && rd_out_n + (unsigned)n < sizeof rd_out) {
+        memcpy(rd_out + rd_out_n, l, (size_t)n);
+        rd_out_n += (unsigned)n;
+        rd_out[rd_out_n] = 0;
+    }
+}
+static void rd_presence_web(int here)
+{
+    char t[40], m[64] = "";
+    snprintf(t, sizeof t, RD_TOPIC "here/%s", rd.id);
+    if (here)
+        snprintf(m, sizeof m, rd.role == 1 ? (rd.partner ? "%s P %s" : "%s P") : rd.target ? "%s L %s" : "%s L",
+                 rd.where, rd.role == 1 ? rd.partner_id : rd.target_id);
+    rd.pres_dirty = 0;
+    rd_line("P 1", t, m);
+}
+int radio_on(int role, const char *id, const char *where)
+{
+    unsigned i;
+    if (!role) {
+        if (rd.want) {                            /* leaving: the presence emptied, then goodbye */
+            if (rd.state == RADIO_LIVE)
+                rd_presence_web(0);
+            rd_line("D", 0, 0);
+        }
+        rd.want = 0;
+        rd.state = RADIO_OFF;
+        return 0;
+    }
+    if (role != rd.role)
+        rd.pres_dirty = 1;
+    rd.role = role;
+    for (i = 0; i + 1u < sizeof rd.id && id[i]; i++)
+        rd.id[i] = id[i];
+    rd.id[i] = 0;
+    for (i = 0; i + 1u < sizeof rd.where && where[i]; i++)
+        rd.where[i] = where[i];
+    rd.where[i] = 0;
+    rd.me = rd_hash((const uint8_t *)rd.id, (int)strlen(rd.id));
+    if (!rd.want) {
+        rd.want = 1;
+        rd.state = RADIO_CONNECTING;
+        rd_line("C", rd.id, 0);
+    }
+    return 0;
+}
+/* the worklet, every few ms: the pairs, the presence, the notes; the lines out (their length; 0 none) */
+int rdw_poll(void)
+{
+    if (rd.want && rd.state == RADIO_LIVE) {
+        rd_pair();
+        if (rd.pres_dirty)
+            rd_presence_web(1);
+        while (rd.out_r != rd.out_w) {
+            char t[40], m[160];
+            int c = 0, n = 0;
+            snprintf(t, sizeof t, RD_TOPIC "play/%s", rd.id);
+            while (rd.out_r != rd.out_w && c < 6) {
+                n += snprintf(m + n, sizeof m - (unsigned)n, "%s%u %c%u", c ? " " : "", (unsigned)rd.out[rd.out_r % RD_EV].t,
+                              rd.out[rd.out_r % RD_EV].kind, (unsigned)rd.out[rd.out_r % RD_EV].note);
+                rd.out_r++;
+                c++;
+            }
+            rd_line("P 0", t, m);
+        }
+    }
+    return (int)rd_out_n;
+}
+char *rdw_out(void) { return rd_out; }
+void rdw_taken(void) { rd_out_n = 0; rd_out[0] = 0; }
+/* the page's connection: 1 on air (the broker tells who is there again), 0 lost (the page tries again) */
+void rdw_state(int live)
+{
+    if (!rd.want)
+        return;
+    memset(rd.peer, 0, sizeof rd.peer);
+    rd.partner = 0;
+    rd.partner_id[0] = 0;
+    rd.state = live ? RADIO_LIVE : RADIO_RETRY;
+    rd_why(live ? "" : "reconnecting");
+    rd.pres_dirty = 1;
+}
+uint8_t *rdw_in_buf(void) { return rd_in; }
+/* a message come: its topic (tn bytes) then its message (mn bytes), in rdw_in_buf */
+void rdw_in(int tn, int mn)
+{
+    if (rd.want && tn > 0 && mn >= 0 && tn + mn <= (int)sizeof rd_in)
+        rd_take(rd_in, tn, rd_in + tn, mn);
+}
+/* the time now (the page's, from its site's clock) */
+void rdw_clock(uint32_t sec, uint32_t ms)
+{
+    rd.c_ms0 = plat_ms();
+    rd.c_sec0 = sec;
+    rd.c_frac0 = ms;
+    rd.synced = 1;
+}
+#endif /* RD_WEB */
 int radio_state(void) { return rd.state; }
 const char *radio_why(void) { return rd.why; }
 /* the time now, to the millisecond: 1 = synced */
