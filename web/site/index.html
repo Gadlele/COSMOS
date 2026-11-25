@@ -40,7 +40,7 @@ header.top nav a:hover { color: var(--text); }
 .btn.primary { background: var(--accent); color: var(--on-accent); box-shadow: 0 0 28px var(--glow); }
 .btn.ghost { color: var(--text); border: 1px solid var(--rule); }
 .btn:hover { filter: brightness(1.1); }
-.hero .meta { margin: 18px 0 0; font: 13px/1.5 var(--mono); color: var(--mid); }
+.hero .meta { margin: 18px 0 0; font: 13px/1.5 var(--mono); color: var(--mid); } .hero .meta a { color: var(--accent); }
 .hero .screen { justify-self: center; width: min(100%, 440px); aspect-ratio: 1; border-radius: 22px; overflow: hidden;
                 border: 10px solid #15171c; box-shadow: 0 0 0 1px var(--rule), 0 30px 80px rgba(0,0,0,.6), 0 0 90px var(--glow); background: #000; }
 .hero .screen img { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
@@ -65,19 +65,6 @@ section .sub { margin: 0 0 36px; color: var(--mid); max-width: 44em; }
 .gallery figcaption b { color: var(--text); font-weight: 600; }
 body > section:nth-of-type(even) { background: var(--panel); border-block: 1px solid var(--rule); }
 body > section:nth-of-type(even) .feature { background: var(--bg); }
-.news { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 40px; align-items: start; }
-.news .body ul { margin: 0; padding-left: 20px; color: var(--mid); } .news .body li { margin: 0 0 10px; }
-.news .body b { color: var(--text); } .news .body p { color: var(--mid); margin: 0 0 14px; }
-.news .date { font: 13px/1.4 var(--mono); color: var(--accent); margin: 0 0 18px; }
-.versions { background: var(--panel); border: 1px solid var(--rule); border-radius: 16px; padding: 20px 22px; }
-.versions h3 { margin: 0 0 12px; font: 400 16px/1.3 var(--display); }
-.versions ul { list-style: none; margin: 0; padding: 0; }
-.versions li { display: flex; gap: 12px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--rule); font-size: 15px; flex-wrap: wrap; }
-.versions li:first-child { border-top: 0; }
-.versions li span { color: var(--mid); font: 13px var(--mono); }
-.versions li em { margin-left: auto; font: 600 12px var(--mono); font-style: normal; color: var(--on-accent); background: var(--accent); padding: 2px 8px; border-radius: 99px; }
-.versions p { margin: 14px 0 0; font-size: 13px; color: var(--mid); }
-@media (max-width: 820px) { .news { grid-template-columns: 1fr; } }
 .steps { counter-reset: s; list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; max-width: 46em; }
 .steps li { counter-increment: s; display: grid; grid-template-columns: 2.2em minmax(0, 1fr); gap: 12px; color: var(--mid); }
 .steps li::before { content: counter(s); font: 400 20px/1.3 var(--display); color: var(--accent); }
@@ -95,82 +82,19 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
   </header>
   <div class="hero">
     <div>
-      <div class="kicker">Firmware for the M-VAVE FM-1 · in the making</div>
+      <div class="kicker">Firmware for the M-VAVE FM-1 · version 1.0</div>
       <h1>COSMOS</h1>
       <p class="lead">A drone synthesizer played by the sky. The sun, the clouds, the air pressure, the geomagnetic activity and the moon shape a drone and the instrument above it, and the screen is the real sky above you.</p>
       <div class="cta">
         <a class="btn primary" href="try/">Hear it in your browser</a>
         <a class="btn ghost" href="install/">Install on your FM-1</a>
       </div>
-      <p class="meta">Free · GPL-3.0 · by Gadlele</p>
+      <p class="meta">Free · GPL-3.0 · by Gadlele · <a href="firmware/cosmos-1.0.fwsc">download 1.0</a></p>
     </div>
     <div class="screen"><img src="img/splash.gif" alt="COSMOS's power-on: scattered stars gather into its name"></div>
   </div>
 </div>
 <div class="horizon"></div>
-
-<section>
-  <div class="wrap news">
-    <div class="body">
-      <h2>Where it stands</h2>
-      <p class="date">2026-10-28</p>
-      <ul>
-        <li><b>COSMOS 0.23, the radio in pairs</b>: on the RADIO page (<span class="keys">FX</span>) the players now pair up at random, two by two: one plays the <b>pad</b>, the other the <b>bells</b>, each hearing the other as it plays, its keys lighting up. Listeners pick a pair in the constellation and hear both. Everyone hears it in the sounds of their own sky. While the radio is on, COSMOS's own sound rests; any other button leaves it. <a href="radio/player/">The test player</a> can be your partner from a browser, and <a href="try/">COSMOS in the browser</a> plays on the radio too, as an FM-1. <a href="install/">Install it</a>.</li>
-        <li><b>COSMOS 0.22, players and listeners</b>: <span class="keys">FX</span> opens the RADIO page. Be a <b>player</b> and your keys go out to whoever listens; be a <b>listener</b> and pick a player from a turning constellation, a star for each one where it is on the Earth, and hear it in your own sky's voice, half a second after it played, its keys lighting up yours. Violet for players, blue for listeners. No FM-1 to listen to? <a href="radio/player/">The test player</a> plays on the radio from a browser. <a href="install/">Install it</a>.</li>
-        <li><b>COSMOS 0.21, RADIO COSMOS</b>: press <span class="keys">FX</span> and your FM-1 tunes in: every FM-1 tuned in plays the same chords at the same moment, each under its own sky. Write the next chords together on the radio page (retired since), up to ten ahead, three notes each; an empty slot is the sky's. Also: the weather no longer fails with error 400, STARS PAD really plays each pad's voice, the page buttons work from every page (on the WiFi page SEQ looks again), and a lighter engine.</li>
-        <li><b>COSMOS 0.20, the stars of each pad</b>: in the settings, <b>STARS</b> has a new choice, <b>PAD</b>: the stars play with the instrument's own voice. Grains for Quasar, whistles for Solar Wind, struck strings for Rings, bells played backwards for Horizon, bongos for Deep Field, bells of pulses for Supernova, and the rest.</li>
-        <li><b>COSMOS 0.19</b>: <span class="keys">PRESET</span> is the drone's volume, in HOME and in EDIT (in EDIT the pressure's trend follows the way you turn K3).</li>
-        <li><b>COSMOS 0.18, the stellar engines</b>: fifteen instruments, one for each weather by day and by night (Nebula, Aurora, Strings, Quasar, Organ, Voyager, Background, Horizon, Tape, Deep Field, Crystal, Rings, Solar Wind, Supernova, Gravity); eight voices for the stars, one for each phase of the moon; and when the Sun stirs, the stars turn into a sequence (Stargate) or the whole sky pulses (Pulsar). Each star plays where it is on the screen, left to right. The pressure colours the chords again.</li>
-        <li><b>COSMOS 0.17</b>: the sound starts when the splash ends, fading in with the sky.</li>
-        <li><b>COSMOS 0.16</b>: on the sky alone (<span class="keys">LFO</span>, <span class="keys">ARP</span>) the keys play without bringing the readings up.</li>
-        <li><b>COSMOS 0.15, the splash</b>: at power-on the stars gather into the word COSMOS, hold, and fade into the sky; any button skips it. WiFi starts after it.</li>
-        <li><b>COSMOS 0.12</b>: <span class="keys">HOME</span> after <span class="keys">EDIT</span> gives back the real sky at once, the weather and its instrument too.</li>
-        <li><b>COSMOS 0.11, the real weather</b>: COSMOS joins your WiFi and every half hour fetches the clouds, the pressure and its trend at your coordinates, and the Kp index; the time and your offset from UTC (summer time too) come with them. <span class="keys">ENV</span> opens the WiFi page: the networks around, the password on the knobs, WiFi off for offline. Up to six networks are remembered and joined by themselves.</li>
-        <li><b>COSMOS 0.10, the instruments</b>: one soft drone underneath (FM, sliding to each chord in 1.5 s), and on top an instrument playing the whole chord, attacked anew at each change: ORGAN, STRINGS, CHOIR or WARM PAD. The pressure picks it (high the organ, low the choir), or the settings fix one. The planets give the scale and the chords.</li>
-        <li><b>COSMOS 0.9, the pads</b>: the drones are now warm analog pads, each note two oscillators a few cents apart, with a slow PWM and a tape wow; each planet its own (SUN PAD, MOON, GLASS, WARM, TAPE, DRONE, HAZE), the moon's waves with none. The night is less muffled, so the chords are heard. The brightest stars stay on the screen even under clouds and by day, faint.</li>
-        <li><b>COSMOS 0.8, the arpeggiator</b>: a line sweeps the sky and the stars it crosses play the scale by their height, the planets louder; <span class="keys">ARP</span> shows it, and what plays lights up. <span class="keys">LFO</span> shows the sky alone; the readings stay otherwise. The planets' bells are gone, the chords never stop going round, the buttons in use light up, and saving no longer breaks the sound while you play: COSMOS saves only when you stop it or leave the settings.</li>
-        <li><b>COSMOS 0.7, the buttons</b>: HOME back to nature, EDIT the whole sky by hand on the knobs, SEL the planets, GLO the settings. The keyboard is one: a key plays the chord on its note (with a planet, the chord of its scale), and plays even with the sky stopped.</li>
-        <li><b>COSMOS 0.6, the harmony</b>: the seven classical planets, each with its note (TUNING COSMIC, EQUAL or NATURAL) and four chords of its own, one every 10 seconds, in the mode the sun's height gives, coloured by the pressure.</li>
-        <li><b>COSMOS 0.4, the sky</b>: the sun, the moon, five planets and the 500 brightest stars computed on the FM-1; the screen is that sky, the readings fade in over it on a touch; the sun and the moon play the sound by themselves.</li>
-        <li><b>COSMOS 0.3, the engine</b>: each drone a small instrument on its own note, a partner that beats against it, its own driven filter, breathing; a planet changes the engine and adds its voice; a tape-like delay, a long reverb, a battery gauge.</li>
-        <li><b>COSMOS PROBE 0.2</b>, a test firmware (<a href="probe/install/">install it</a>): it joins your WiFi, fetches the cloud cover and the pressure (Open-Meteo) and the Kp index (NOAA) over HTTPS, and shows how much memory WiFi leaves for COSMOS's delay and reverb. It makes no sound. First run on an FM-1: connected at −85 dBm, both sources in 386 ms, and room for a 1-second stereo delay beside the reverb. 0.2 keeps the password's big character in lower case when it is.</li>
-        <li><b>COSMOS in your browser</b>: the real firmware running on a simulated FM-1, knobs, buttons, keys, screen and sound, with your computer's clock and a simulated weather. <a href="try/">Try it</a>.</li>
-
-      </ul>
-    </div>
-    <aside class="versions">
-      <h3>Versions</h3>
-      <ul>
-        <li><a href="firmware/cosmos-0.23.fwsc"><b>COSMOS 0.23</b></a><span>2026-10-28</span> <em>the radio in pairs</em></li>
-        <li><b>COSMOS 0.22</b><span>2026-10-28</span></li>
-        <li><b>COSMOS 0.21</b><span>2026-10-28</span></li>
-        <li><b>COSMOS 0.20</b><span>2026-10-27</span></li>
-        <li><b>COSMOS 0.19</b><span>2026-10-27</span></li>
-        <li><b>COSMOS 0.18</b><span>2026-10-27</span></li>
-        <li><b>COSMOS 0.17</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.16</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.15</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.14</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.13</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.12</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.11</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.10</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.9</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.8</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.7</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.6</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.5</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.4</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.3</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.2</b><span>2026-10-26</span></li>
-        <li><b>COSMOS 0.1</b><span>2026-10-26</span></li>
-        <li><a href="probe/firmware/probe-0.2.fwsc"><b>PROBE 0.2</b></a><span>2026-10-26</span></li>
-        <li><b>PROBE 0.1</b><span>2026-10-26</span></li>
-      </ul>
-      <p>The plan and the code: <a href="https://github.com/Gadlele/COSMOS/blob/main/docs/DESIGN.md">DESIGN</a> · <a href="https://github.com/Gadlele/COSMOS/blob/main/docs/MEMORY.md">MEMORY</a> · <a href="https://github.com/Gadlele/COSMOS">Source</a></p>
-    </aside>
-  </div>
-</section>
 
 <section>
   <div class="wrap">
@@ -193,9 +117,9 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
     <p class="sub">White Terminus text on black, over the stars, the moon and the planets where they are above you now. Touch a control and the readings fade in; leave it and they fade back to the sky.</p>
     <div class="gallery">
       <figure><img src="img/fade.gif" alt="The readings fading in on a touch and out to the stars" loading="lazy"><figcaption><b>A touch</b>: the readings fade in, then back to the stars.</figcaption></figure>
-      <figure><img src="img/cosmos-readings.png" alt="COSMOS 0.4: the readings over the sky of Rome" loading="lazy"><figcaption><b>COSMOS</b>: the readings over the sky at 41.9 N 12.5 E, 26 October, 19:00, Saturn playing its chords.</figcaption></figure>
-      <figure><img src="img/cosmos-sky.png" alt="COSMOS 0.4: the sky alone, Saturn chosen" loading="lazy"><figcaption><b>The sky alone</b>, Saturn chosen: four corners around it, its rings and its chime.</figcaption></figure>
-      <figure><img src="img/cosmos-settings.png" alt="COSMOS 0.4's settings" loading="lazy"><figcaption><b>Settings</b>: the city, the date, the time, the weather.</figcaption></figure>
+      <figure><img src="img/cosmos-readings.png" alt="COSMOS: the readings over the sky of Rome" loading="lazy"><figcaption><b>COSMOS</b>: the readings over the sky at 41.9 N 12.5 E, 26 October, 19:00, Saturn playing its chords.</figcaption></figure>
+      <figure><img src="img/cosmos-sky.png" alt="COSMOS: the sky alone, Saturn chosen" loading="lazy"><figcaption><b>The sky alone</b>, Saturn chosen: four corners around it, its rings and its chime.</figcaption></figure>
+      <figure><img src="img/cosmos-settings.png" alt="COSMOS's settings" loading="lazy"><figcaption><b>Settings</b>: the city, the date, the time, the weather.</figcaption></figure>
       <figure><img src="img/probe-main.png" alt="COSMOS PROBE's main screen" loading="lazy"><figcaption><b>PROBE</b>: the network, the data and the memory left.</figcaption></figure>
       <figure><img src="img/probe-networks.png" alt="COSMOS PROBE's list of networks" loading="lazy"><figcaption><b>PROBE</b>: the networks around.</figcaption></figure>
       <figure><img src="img/probe-password.png" alt="COSMOS PROBE's password screen" loading="lazy"><figcaption><b>PROBE</b>: a password typed on the panel.</figcaption></figure>
@@ -223,6 +147,7 @@ footer p { margin: 0 0 10px; max-width: 70em; } footer a { color: var(--mid); }
 
 <footer>
   <div class="wrap">
+    <p>The plan and the code: <a href="https://github.com/Gadlele/COSMOS/blob/main/docs/DESIGN.md">DESIGN</a> · <a href="https://github.com/Gadlele/COSMOS/blob/main/docs/MEMORY.md">MEMORY</a> · <a href="https://github.com/Gadlele/COSMOS">Source</a></p>
     <p>COSMOS is free software under the GPL-3.0 or later. Weather by <a href="https://open-meteo.com">Open-Meteo</a> (CC BY 4.0); the Kp index from the NOAA Space Weather Prediction Center.</p>
     <p>M-VAVE and FM-1 are trademarks of their owners. COSMOS is an independent project.</p>
   </div>

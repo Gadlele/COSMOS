@@ -9,9 +9,10 @@ over your location, stars, moon and planets, with the readings in plain white te
 The slower a source changes, the deeper its effect: the moon and the pressure decide what instrument COSMOS is
 this week, a geomagnetic storm tears it apart now and then, the clouds and the sun colour it through the day.
 
-**Status: design, and a test firmware.** [Install COSMOS PROBE](https://gadlele.github.io/COSMOS/install/), which
-joins WiFi, fetches COSMOS's data and measures the memory left. See [docs/DESIGN.md](docs/DESIGN.md) for the plan,
-[docs/MEMORY.md](docs/MEMORY.md) for the memory budget and [docs/BUILDING.md](docs/BUILDING.md) to build it.
+**Version 1.0.** [Install it](https://gadlele.github.io/COSMOS/install/) from Chrome or Edge, or
+[try it in your browser](https://gadlele.github.io/COSMOS/try/) first: the firmware itself on a simulated FM-1. See
+[docs/DESIGN.md](docs/DESIGN.md) for how it works, [docs/MEMORY.md](docs/MEMORY.md) for the memory budget and
+[docs/BUILDING.md](docs/BUILDING.md) to build it.
 
 `web/emulator/` is a sketch of COSMOS's sound in Web Audio, to try the mappings without an FM-1:
 `index.src.html` with the Terminus glyphs and the star catalog (`data.js`) put in its `/*DATA*/` makes `index.html`.
