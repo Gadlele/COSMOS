@@ -1298,6 +1298,26 @@ static void disc(int32_t cx, int32_t cy, int32_t r, uint16_t c, int32_t y0)
 }
 
 /* one frame of the sky, in five strips of 48 rows: stars, planets, the moon, the sun, then the readings */
+/* a line of what the buttons do, "SAVE: GO  ARP: SKY": a word ending in a colon (a button's name) brighter */
+#define C_KEY RGB(207, 216, 255)
+static void cv_hint(int32_t x, int32_t y, const char *s, uint16_t c)
+{
+    char w[32];
+    while (*s) {
+        int n = 0;
+        while (s[n] && s[n] != ' ' && n < 31)
+            n++;
+        if (n) {
+            copy(w, s, (unsigned)n + 1u);
+            cv_text(x, y, &FONT_S, w, w[n - 1] == ':' ? C_KEY : c);
+            x += text_w(&FONT_S, w);
+            s += n;
+        }
+        for (; *s == ' '; s++)
+            x += text_w(&FONT_S, " ");
+    }
+}
+
 static void sky_frame(void)
 {
     char lines[NLINES][32];
@@ -1461,7 +1481,7 @@ static void settings_frame(void)
             put(l + 2, LABEL[r]);
             line2(t, l, v);
         } else if (i == 12) {
-            copy(t, "SELECT ROW ALGO/PRESET STEP", 32);
+            copy(t, "SELECT: ROW ALGO/PRESET: STEP", 32);
             c = C_MID;
         } else if (i == 13) {            /* the audio load (CPU2: on both cores), the heap, the battery */
             int bt = plat_battery();
@@ -1476,7 +1496,7 @@ static void settings_frame(void)
                 put(q, "-");
             c = C_LOW;
         }
-        cv_text(8, 0, &FONT_S, t, c);
+        cv_hint(8, 0, t, c);
         cv_blit(0, (uint32_t)(8 + i * 16));
     }
 }
@@ -1710,8 +1730,8 @@ static void radio_page(void)
             put(put_int(put(b, jam == 1 ? "HOLD THE KEYS  " : "THE KEYS RING  "), radio_listeners()), " LISTEN");
         else
             copy(b, ui.radio == 2 ? (n && ui.r_target && (p[ui.r_pick].h == ui.r_target || p[ui.r_pick].mate == ui.r_target)
-                                     ? "SAVE STOP  SELECT STAR" : "SAVE LISTEN  SELECT STAR") : "ALGO ROLE  FX BACK", sizeof b);
-        cv_text(8, 218 - y0, &FONT_S, b, C_LOW);
+                                     ? "SAVE: STOP  SELECT: STAR" : "SAVE: LISTEN  SELECT: STAR") : "ALGO: ROLE  FX: BACK", sizeof b);
+        cv_hint(8, 218 - y0, b, C_LOW);
         cv_blit(0, (uint32_t)y0);
     }
 }
@@ -1891,12 +1911,12 @@ static void voy_page(void)
         place_of(put(b, "B "), voy.b_lat100, voy.b_lon100);
         cv_text(8, 204 - y0, &FONT_S, b, C_VOY);
         if (voy.going == 2)
-            copy(a, "SAVE STOP  ARP SKY", sizeof a);
+            copy(a, "SAVE: STOP  ARP: SKY", sizeof a);
         else if (voy.going == 1)
-            copy(a, "B'S WEATHER...  SAVE OFF", sizeof a);
+            copy(a, "B'S WEATHER...  SAVE: OFF", sizeof a);
         else
-            put(put(put(put_int(put(put_int(a, voy_km()), " KM  "), VOY_MIN[voy.dur]), " MIN"), "  "), "SAVE GO");
-        cv_text(8, 220 - y0, &FONT_S, a, C_LOW);
+            put(put(put(put_int(put(put_int(a, voy_km()), " KM  "), VOY_MIN[voy.dur]), " MIN"), "  "), "SAVE: GO");
+        cv_hint(8, 220 - y0, a, C_LOW);
         cv_blit(0, (uint32_t)y0);
     }
 }
@@ -1909,6 +1929,12 @@ static void wrow(int i, const char *t, uint16_t c, const char *right, uint16_t r
     cv_text(8, 0, &FONT_S, t, c);
     if (right && right[0])
         cv_text(232 - text_w(&FONT_S, right), 0, &FONT_S, right, rc);
+    cv_blit(0, (uint32_t)(8 + i * 16));
+}
+static void hrow(int i, const char *t, uint16_t c)   /* a row of what the buttons do */
+{
+    cv_begin(240, 16, C_BLACK);
+    cv_hint(8, 0, t, c);
     cv_blit(0, (uint32_t)(8 + i * 16));
 }
 #define RULE "----------------------------"
@@ -1955,8 +1981,8 @@ static void wifi_page(void)
         wrow(12, ui.msg[0], C_TXT, ui.msg[1], C_MID);
         wrow(13, "", C_TXT, 0, 0);
     } else {
-        wrow(12, "SELECT PICK  SAVE JOIN", C_LOW, 0, 0);
-        wrow(13, set.offline ? "SEQ LOOK  REC WIFI ON" : "SEQ LOOK  REC OFF  PLAY NOW", C_LOW, 0, 0);
+        hrow(12, "SELECT: PICK  SAVE: JOIN", C_LOW);
+        hrow(13, set.offline ? "SEQ: LOOK  REC: WIFI ON" : "SEQ: LOOK REC: OFF PLAY: NOW", C_LOW);
     }
 }
 
@@ -1987,10 +2013,10 @@ static void pass_page(void)
     }
     cv_blit(0, 8 + 5 * 16);
     wrow(7, "", C_TXT, 0, 0);
-    wrow(8, "SELECT CHARACTER", C_MID, 0, 0);
-    wrow(9, "ALGO   abc ABC 123 #+=", C_MID, 0, 0);
-    wrow(10, "PLAY   ADD   HOME DELETE", C_MID, 0, 0);
-    wrow(11, "SAVE   JOIN  SEL BACK", C_MID, 0, 0);
+    hrow(8, "SELECT: CHARACTER", C_MID);
+    hrow(9, "ALGO: abc ABC 123 #+=", C_MID);
+    hrow(10, "PLAY: ADD  HOME: DELETE", C_MID);
+    hrow(11, "SAVE: JOIN  SEL: BACK", C_MID);
     wrow(12, RULE, C_LOW, 0, 0);
     wrow(13, plat_ms() < ui.msg_until ? ui.msg[0] : "", C_TXT, plat_ms() < ui.msg_until ? ui.msg[1] : 0, C_MID);
 }
