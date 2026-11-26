@@ -5,9 +5,9 @@
  * THE SKY (the main screen): the sun, the moon, the planets and the stars where they are above the chosen place now,
  * on the whole square. The sun, the moon and the clouds decide what shows (a full moon or a daylight sky hides the
  * faint stars); Kp makes the stars twinkle. The readings stay over it in white Terminus; LFO leaves the sky alone
- * (a touch brings the readings back for two seconds), ARP the sky with the arpeggiator's line.
+ * (a touch brings the readings back for two seconds), SEQ the sky with the arpeggiator's line.
  * THE ARPEGGIATOR: a line sweeps the square in 16 s; the bright stars it crosses pluck a note of the scale by their
- * height, louder the brighter; the planets it crosses too, louder still. On the ARP screen what plays lights up.
+ * height, louder the brighter; the planets it crosses too, louder still. On the SEQ screen what plays lights up.
  * THE BUTTONS
  *   HOME   back to nature: the sun and the moon as they are, the weather as it comes (fetched with WiFi, stage 3;
  *          until then drifting by itself)
@@ -15,7 +15,10 @@
  *          K4 Kp, ALGO the moon's cycle; the pressure's trend follows the way K3 was turned
  *   PRESET the drone's level, always (0 .. 100 %, in steps of 5)
  *   SEL    the next planet up (in EDIT any of the seven classical ones, the Sun and the Moon among them), or none
- *   LFO    the sky alone, and back      ARP the ARP screen, the arpeggio on; again, off and back
+ *   LFO    the sky alone, and back      SEQ the arpeggiator's screen, the arpeggio on; again, off and back
+ *   ARP    VOYAGE, the world's map: K1 and K2 move B, K3 zooms, K4 the voyage's length, SAVE goes (again: stops
+ *          where it is). From here (A) to B the weather and the sky glide, the pad changing halfway; then B is here
+ *          until HOME brings it home (and every power-on starts home). ARP again, or any page button: the sky
  *   FX     the RADIO page (radio.c, with WiFi): ALGO the role, a PLAYER (paired at random with another: one plays
  *          the PAD, the other the BELLS, each hearing the other) or a LISTENER (it hears a pair, or one alone: SAVE
  *          on its star in the players' constellation). All in this sky's own sounds; the sky itself silent, PLAY
@@ -42,6 +45,7 @@
 #include "dsp/astro.h"
 #include "sky_data.h"
 #include "splash_data.h"
+#include "land_data.h"
 
 extern uint32_t shim_heap_used;
 extern const uint32_t shim_heap_size;
@@ -111,7 +115,8 @@ static struct {
     float alpha;                         /* the readings' opacity, 0..1 */
     uint32_t last_sky, last_weather, last_save, last_frame;
     uint32_t rnd;
-    int screen;                          /* 0 the sky, 1 the settings, 2 WiFi (ENV), 3 a network's password */
+    int screen;                          /* 0 the sky, 1 the settings, 2 WiFi (ENV), 3 a network's password, 4 RADIO
+                                          * (FX), 5 VOYAGE (ARP) */
     int row;                             /* the settings' row */
     char msg[2][24];
     uint32_t msg_until;
@@ -153,6 +158,49 @@ static struct {
     } r_pend[12];                        /* a listener's pad notes, waiting their time */
 } ui = {.rnd = 0x2545F491u};
 
+/* VOYAGE (ARP): where COSMOS is, the map's B, a voyage from A to B under way. Not kept: every power-on starts home */
+static const uint8_t VOY_MIN[10] = {1, 2, 3, 5, 10, 15, 20, 30, 45, 60};   /* the lengths K4 offers, minutes */
+static struct {
+    int16_t lat100, lon100;              /* where COSMOS is when away (else home: set's) */
+    int8_t utc4;                         /* its offset from UTC, quarter hours */
+    uint8_t away;                        /* not home: a voyage ended somewhere */
+    uint8_t going;                       /* 0 no voyage, 1 B's weather asked, 2 on the way */
+    uint8_t fetch_b, b_real, home_kept;  /* the fetch on is B's; B's weather is the network's; home's weather kept */
+    uint8_t zoom, dur, ready;            /* the map's zoom (x1 x2 x4 x8), the length (VOY_MIN's), B set up */
+    int16_t b_lat100, b_lon100;          /* the map's B */
+    int16_t a_lat100, a_lon100;          /* on the way: whence */
+    int8_t a_utc4, b_utc4, a_trend, b_trend;
+    int16_t a_code, b_code;
+    float a_clouds, a_press, b_clouds, b_press;
+    uint32_t t0, dur_ms;                 /* the voyage's start (plat_ms), its length */
+    float home_clouds, home_press;       /* home's weather as it was left: HOME gives it back at once */
+    int16_t home_code;
+    int8_t home_trend;
+} voy;
+#define VOY_DISSOLVE 0.06f               /* halfway, the sky of A dissolves into B's: this much either side */
+static float voy_p(void)                 /* the voyage's progress, 0..1 */
+{
+    float p = (float)(plat_ms() - voy.t0) / (float)voy.dur_ms;
+    return p < 0.0f ? 0.0f : p > 1.0f ? 1.0f : p;
+}
+static float wrap180(float d)            /* an angle into -180..180 */
+{
+    while (d > 180.0f)
+        d -= 360.0f;
+    while (d < -180.0f)
+        d += 360.0f;
+    return d;
+}
+/* the point on the way at p, degrees: the straight line on the map, round the shorter side */
+static void voy_at(float p, float *lat, float *lon)
+{
+    float la = (float)voy.a_lat100 / 100.0f, lo = (float)voy.a_lon100 / 100.0f;
+    *lat = la + ((float)voy.b_lat100 / 100.0f - la) * p;
+    *lon = wrap180(lo + wrap180((float)voy.b_lon100 / 100.0f - lo) * p);
+}
+static int32_t here_lat100(void) { return voy.away ? voy.lat100 : set.lat100; }
+static int32_t here_lon100(void) { return voy.away ? voy.lon100 : set.lon100; }
+
 static uint32_t unix_now(void) { return ui.clock_unix + (plat_ms() - ui.clock_ms) / 1000u; }
 static void clock_set(uint32_t u)
 {
@@ -174,7 +222,14 @@ static float gauss(void)                 /* roughly normal: the sum of four unif
         s += (float)(rnd() & 0xFFFFu) / 65536.0f;
     return (s - 2.0f) * 1.732f;
 }
-static int32_t utc_offset_s(void) { return (int32_t)set.utc4 * 900 + (set.summer ? 3600 : 0); }
+static int32_t utc_offset_s(void)       /* here's (on the way: A's, then B's from halfway) */
+{
+    if (voy.going == 2)
+        return (int32_t)(voy_p() < 0.5f ? voy.a_utc4 : voy.b_utc4) * 900;
+    if (voy.away)
+        return (int32_t)voy.utc4 * 900;
+    return (int32_t)set.utc4 * 900 + (set.summer ? 3600 : 0);
+}
 
 /* ------------------------------------------------------------- the harmony --- */
 /* each planet's note: its period raised by octaves into hearing (Hans Cousto's cosmic octave): the Earth's year for
@@ -530,9 +585,29 @@ static void place(altaz_t p, int32_t pl, float mag, int edge, float dark_below)
 /* where everything is now; the sun and the moon to the engine; which planets are seen */
 static void sky_update(void)
 {
-    float lat = (float)set.lat100 / 100.0f, lon = (float)set.lon100 / 100.0f;
-    int32_t i, x, y;
-    astro_now((int32_t)(unix_now() - (uint32_t)J2000_UNIX), lat, lon, &now_sky);
+    float lat = (float)here_lat100() / 100.0f, lon = (float)here_lon100() / 100.0f, p = 0.0f, mix = 9.0f;
+    int32_t i, x, y, t = (int32_t)(unix_now() - (uint32_t)J2000_UNIX);
+    float sun_from = 0.0f;
+    if (voy.going == 2) {                /* on the way: A's sky, then B's from halfway; the sun's height glides */
+        sky_now_t other;
+        float la, lo;
+        p = voy_p();
+        mix = fm_fabsf(p - 0.5f) / VOY_DISSOLVE;
+        voy_at(0.0f, &la, &lo);
+        astro_now(t, la, lo, &other);
+        sun_from = other.sun_alt;
+        voy_at(1.0f, &lat, &lon);
+        if (p < 0.5f)
+            voy_at(0.0f, &lat, &lon);
+    }
+    astro_now(t, lat, lon, &now_sky);
+    if (voy.going == 2) {
+        sky_now_t b;
+        float la, lo;
+        voy_at(1.0f, &la, &lo);
+        astro_now(t, la, lo, &b);
+        now_sky.sun_alt = sun_from + (b.sun_alt - sun_from) * p;
+    }
     if (!set.manual) {                  /* nature; EDIT leaves them in the hands */
         sky.sun = now_sky.sun_alt;
         sky.moon = now_sky.moon;
@@ -552,6 +627,10 @@ static void sky_update(void)
         altaz_t p = astro_altaz((float)STARS[i].ra * (FM_TWO_PI / 65536.0f), (float)STARS[i].dec * 0.000174532925f,
                                 now_sky.lst, lat * 0.0174532925f);
         float mag = (float)STARS[i].mag10 / 10.0f;
+        if (mix < 1.0f && (float)((uint32_t)i * 2654435761u >> 24) > mix * 255.0f) {
+            star_y[i] = 255;             /* halfway: A's sky dissolving into B's, star by star */
+            continue;
+        }
         if (mag <= fm_maxf(limit, STAR_FLOOR) && astro_project(p, &x, &y)) {
             star_x[i] = (uint8_t)x;
             star_y[i] = (uint8_t)y;
@@ -569,6 +648,9 @@ static void sky_update(void)
               PL_MERCURY + i == PL_VENUS || PL_MERCURY + i == PL_JUPITER ? -2.0f : -5.0f);
     place(now_sky.sun_pos, PL_SUN, -26.0f, 6, 90.0f);
     place(now_sky.moon_pos, PL_MOON, sky.sun < 8.0f ? -12.0f : 99.0f, 5, 90.0f);
+    if (mix < 0.5f)                      /* (the planets too, in the dissolve's middle) */
+        for (i = 0; i < PL_N; i++)
+            pl_drawn[i] = 0;
     /* from nature, a chosen planet that sets takes its engine and its chords along (EDIT keeps it) */
     if (!set.manual && sky.planet != PL_NONE && !pl_up[sky.planet]) {
         app_say(planet_name(sky.planet), "GONE");
@@ -666,6 +748,103 @@ static uint32_t http_date(const char *d)
     return (uint32_t)days_from_civil(v[2], m, v[0]) * 86400u + (uint32_t)(v[3] * 3600 + v[4] * 60 + v[5]);
 }
 
+static int32_t round_f(float v);
+/* ---- VOYAGE: on the way, once B's weather is known (r: the network's; 0 or none in it: guessed, its offset the
+ * sun's, a quarter hour every 3.75 degrees) */
+static void voy_go(const net_res_t *r)
+{
+    int real = r && r->press10 >= 0 && r->cloud >= 0;
+    float lon = (float)voy.b_lon100 / 100.0f;
+    if (!voy.away && !voy.home_kept) {   /* leaving home: its weather kept for HOME */
+        voy.home_clouds = nat.clouds;
+        voy.home_press = nat.press;
+        voy.home_code = (int16_t)nat.wcode;
+        voy.home_trend = (int8_t)nat.trend;
+        voy.home_kept = 1;
+    }
+    voy.a_lat100 = (int16_t)here_lat100();
+    voy.a_lon100 = (int16_t)here_lon100();
+    voy.a_utc4 = (int8_t)(utc_offset_s() / 900);
+    voy.a_clouds = nat.clouds;
+    voy.a_press = nat.press;
+    voy.a_trend = (int8_t)nat.trend;
+    voy.a_code = (int16_t)nat.wcode;
+    if (real) {
+        voy.b_clouds = (float)r->cloud;
+        voy.b_press = (float)r->press10 / 10.0f;
+        voy.b_trend = (int8_t)(r->trend10 <= -10 ? -1 : r->trend10 >= 10 ? 1 : 0);
+        voy.b_code = (int16_t)r->wcode;
+    } else {                             /* no network: a weather of its own */
+        voy.b_clouds = (float)(rnd() % 101u);
+        voy.b_press = 990.0f + (float)(rnd() % 41u);
+        voy.b_trend = (int8_t)((int32_t)(rnd() % 3u) - 1);
+        voy.b_code = -1;
+    }
+    voy.b_utc4 = (int8_t)(r && r->utc_s != NET_NONE_S && r->utc_s > -14 * 3600 && r->utc_s < 15 * 3600 ? r->utc_s / 900
+                          : round_f(lon / 3.75f));
+    voy.b_real = (uint8_t)real;
+    voy.t0 = plat_ms();
+    voy.dur_ms = (uint32_t)VOY_MIN[voy.dur] * 60000u;
+    voy.going = 2;
+    ui.last_sky = 0;
+    app_say("VOYAGE", real ? "ON THE WAY" : "WEATHER GUESSED");
+}
+/* each second on the way: the weather from A's to B's (the kind, so the pad, and the trend at halfway); then there */
+static void voy_tick(uint32_t now)
+{
+    float p = voy_p();
+    nat.clouds = voy.a_clouds + (voy.b_clouds - voy.a_clouds) * p;
+    nat.press = voy.a_press + (voy.b_press - voy.a_press) * p;
+    nat.trend = p < 0.5f ? voy.a_trend : voy.b_trend;
+    nat.wcode = p < 0.5f ? voy.a_code : voy.b_code;
+    if (p < 1.0f)
+        return;
+    voy.going = 0;                       /* arrived: B is here */
+    voy.away = 1;
+    voy.lat100 = voy.b_lat100;
+    voy.lon100 = voy.b_lon100;
+    voy.utc4 = voy.b_utc4;
+    ui.wx_cloud = voy.b_clouds;
+    ui.wx_press = voy.b_press;
+    ui.wx_trend = voy.b_trend;
+    ui.wx_code = voy.b_code;
+    ui.net_at = voy.b_real ? (now ? now : 1u) : 0u;   /* (guessed: it drifts by itself from there) */
+    ui.net_try = now ? now : 1u;
+    ui.last_sky = 0;
+    app_say("VOYAGE", "ARRIVED");
+}
+/* SAVE on the way: stopped where it is, that place here; its weather asked at once */
+static void voy_stop(void)
+{
+    float p = voy_p(), lat, lon;
+    voy_at(p, &lat, &lon);
+    voy.going = 0;
+    voy.away = 1;
+    voy.lat100 = (int16_t)round_f(lat * 100.0f);
+    voy.lon100 = (int16_t)round_f(lon * 100.0f);
+    voy.utc4 = p < 0.5f ? voy.a_utc4 : voy.b_utc4;
+    ui.net_at = 0;
+    ui.net_try = 0;
+    ui.last_sky = 0;
+    app_say("VOYAGE", "STOPPED HERE");
+}
+/* HOME: home at once, its weather as it was left (and asked again) */
+static void voy_home(void)
+{
+    if (!voy.away && !voy.going)
+        return;
+    voy.going = voy.away = 0;
+    voy.fetch_b = 0;
+    if (voy.home_kept) {
+        nat.clouds = ui.wx_cloud = voy.home_clouds;
+        nat.press = ui.wx_press = voy.home_press;
+        nat.wcode = ui.wx_code = voy.home_code;
+        nat.trend = ui.wx_trend = voy.home_trend;
+        voy.home_kept = 0;
+    }
+    ui.net_try = 0;
+}
+
 /* the network's side of a frame: fetch when connected and due; take what came */
 static void net_tick(uint32_t now)
 {
@@ -679,6 +858,19 @@ static void net_tick(uint32_t now)
             return;
         ui.fetching = 0;
         r = net_result();
+        if (voy.fetch_b) {               /* B's weather, for a voyage */
+            voy.fetch_b = 0;
+            if (r->kp100 >= 0)
+                ui.wx_kp = (float)r->kp100 / 100.0f;
+            {
+                uint32_t u = http_date(r->date);
+                if (u)
+                    clock_set(u);
+            }
+            if (voy.going == 1)
+                voy_go(r);
+            return;
+        }
         if (r->press10 >= 0 && r->cloud >= 0) {
             ui.wx_cloud = (float)r->cloud;
             ui.wx_press = (float)r->press10 / 10.0f;
@@ -691,8 +883,12 @@ static void net_tick(uint32_t now)
             ui.net_at = now ? now : 1u;
         }
         if (r->utc_s != NET_NONE_S && r->utc_s > -14 * 3600 && r->utc_s < 15 * 3600) {
-            set.utc4 = (int8_t)(r->utc_s / 900);   /* the place's offset now: summer time is in it */
-            set.summer = 0;
+            if (voy.away) {
+                voy.utc4 = (int8_t)(r->utc_s / 900);   /* away: there's, home's kept */
+            } else {
+                set.utc4 = (int8_t)(r->utc_s / 900);   /* the place's offset now: summer time is in it */
+                set.summer = 0;
+            }
         }
         {
             uint32_t u = http_date(r->date);
@@ -703,7 +899,16 @@ static void net_tick(uint32_t now)
             ui.net_try = now - FETCH_MS + RETRY_MS;   /* nothing came: again soon */
         return;
     }
-    if (conn && (!ui.net_try || now - ui.net_try >= FETCH_MS) && net_fetch(set.lat100, set.lon100) == 0) {
+    if (voy.going == 1) {                /* a voyage asked for: B's weather first (with no network, guessed) */
+        if (!conn || set.offline)
+            voy_go(0);
+        else if (net_fetch(voy.b_lat100, voy.b_lon100) == 0)
+            ui.fetching = voy.fetch_b = 1;
+        return;
+    }
+    if (voy.going == 2)
+        return;                          /* on the way: A's and B's, nothing else */
+    if (conn && (!ui.net_try || now - ui.net_try >= FETCH_MS) && net_fetch(here_lat100(), here_lon100()) == 0) {
         ui.fetching = 1;
         ui.net_try = now ? now : 1u;
     }
@@ -792,12 +997,22 @@ static void field(char *out, const char *label, const char *value, int w)
 }
 
 /* the place as "41.9N 12.5E" */
-static void place_text(char *d)
+static void place_of(char *d, int32_t lat100, int32_t lon100)
 {
-    d = put_dec1(d, set.lat100);
-    d = put(d, set.lat100 >= 0 ? "N " : "S ");
-    d = put_dec1(d, set.lon100);
-    put(d, set.lon100 >= 0 ? "E" : "W");
+    d = put_dec1(d, lat100);
+    d = put(d, lat100 >= 0 ? "N " : "S ");
+    d = put_dec1(d, lon100);
+    put(d, lon100 >= 0 ? "E" : "W");
+}
+static void place_text(char *d)          /* here (on the way: where it is now) */
+{
+    if (voy.going == 2) {
+        float lat, lon;
+        voy_at(voy_p(), &lat, &lon);
+        place_of(d, round_f(lat * 100.0f), round_f(lon * 100.0f));
+    } else {
+        place_of(d, here_lat100(), here_lon100());
+    }
 }
 /* the local time: the date, the hour, the minute */
 static void local_time(uint32_t u, int32_t *y, int32_t *mo, int32_t *d, int32_t *h, int32_t *mi)
@@ -913,7 +1128,7 @@ static void radio_set(int role)
         ui.r_task = 0;
     } else if (role && ui.r_task) {      /* the task runs: the new role goes out with the presence */
         char where[24];
-        dec2(put(dec2(where, set.lat100), " "), set.lon100);
+        dec2(put(dec2(where, here_lat100()), " "), here_lon100());
         radio_on(role, ui.radio_id, where);
     }
     radio_hush();
@@ -939,7 +1154,7 @@ static void radio_tick(void)
     if (!ui.r_task && plat_wifi_state() == WIFI_CONNECTED) {   /* its task, once connected */
 #endif
         char where[24];
-        dec2(put(dec2(where, set.lat100), " "), set.lon100);
+        dec2(put(dec2(where, here_lat100()), " "), here_lon100());
         ui.r_task = radio_on(ui.radio, ui.radio_id, where) == 0;
     }
     if (ui.radio == 1) {                 /* a new part, or a new partner: the pad's notes let go */
@@ -1052,16 +1267,24 @@ static void readings(char lines[NLINES][32], uint16_t col[NLINES])
         line2(lines[9], l, v);
         col[9] = C_MID;
     }
-    if (set.manual) {
+    if (voy.going == 2) {
+        char b[24];
+        place_of(b, voy.b_lat100, voy.b_lon100);
+        put(put(put_int(put(lines[10], "VOYAGE "), (int32_t)(voy_p() * 100.0f)), "% TO "), b);
+    } else if (voy.going == 1) {
+        copy(lines[10], "VOYAGE: B'S WEATHER...", 32);
+    } else if (set.manual) {
         copy(lines[10], "EDIT: THE SKY BY HAND", 32);
     } else {
         int32_t age = weather_age_min();
         if (age >= 0)
-            put(put_int(put(lines[10], "HOME: WEATHER "), age), " MIN AGO");
+            put(put_int(put(lines[10], voy.away ? "AWAY: WEATHER " : "HOME: WEATHER "), age), " MIN AGO");
+        else if (voy.away)
+            copy(lines[10], "AWAY: ITS OWN WEATHER", 32);
         else
             copy(lines[10], set.offline ? "OFFLINE: RANDOM WEATHER" : "HOME: RANDOM WEATHER (ENV)", 32);
     }
-    col[10] = set.manual ? C_MID : C_LOW;
+    col[10] = set.manual || voy.going ? C_MID : C_LOW;
 }
 
 static uint16_t grey(int32_t g)
@@ -1503,6 +1726,191 @@ static void radio_page(void)
     }
 }
 
+/* ------------------------------------------------------------- VOYAGE (ARP) --- */
+/* the world, flat (longitude across, latitude up), the land's outline only (land_data.h). Zoomed out it is the
+ * whole world; zoomed in (K3) it follows B, or the voyage on its way. A is a square, B a cross, the way dotted */
+#define VM_Y0 24                         /* the map's band on the screen: y 24 .. 183 */
+#define VM_H 160
+#define C_VOY RGB(150, 190, 255)
+static float vm_ppd, vm_lat, vm_lon;     /* this frame's view: pixels a degree, its centre */
+static void voy_open(void)               /* the map's B: here, the first time */
+{
+    if (voy.ready)
+        return;
+    voy.b_lat100 = (int16_t)here_lat100();
+    voy.b_lon100 = (int16_t)here_lon100();
+    voy.dur = 2;                         /* 3 minutes */
+    voy.ready = 1;
+}
+static void vm_xy(float lat, float lon, float *x, float *y)
+{
+    *x = 120.0f + wrap180(lon - vm_lon) * vm_ppd;
+    *y = (float)(VM_Y0 + VM_H / 2) - (lat - vm_lat) * vm_ppd;
+}
+/* a line on this band (y0 .. y0 + 47), inside the map; dotted: every third pixel */
+static void vm_line(float x0, float y0f, float x1, float y1, uint16_t c, int32_t y0, int dotted)
+{
+    float dx = x1 - x0, dy = y1 - y0f, n = fm_maxf(fm_fabsf(dx), fm_fabsf(dy));
+    int32_t k, steps;
+    if (fm_minf(y0f, y1) >= (float)(y0 + 48) || fm_maxf(y0f, y1) < (float)y0 || fm_maxf(x0, x1) < 0.0f
+        || fm_minf(x0, x1) >= 240.0f || n > 600.0f)
+        return;
+    steps = (int32_t)n + 1;
+    for (k = 0; k <= steps; k++) {
+        int32_t x = (int32_t)(x0 + dx * (float)k / (float)steps), y = (int32_t)(y0f + dy * (float)k / (float)steps);
+        if (y >= VM_Y0 && y < VM_Y0 + VM_H && y >= y0 && y < y0 + 48 && (!dotted || k % 3 == 0))
+            cv_pset(x, y - y0, c);
+    }
+}
+static void vm_land(int32_t y0)          /* the outline, ring by ring; a side across the map's edge left out, and
+                                          * Antarctica's along the pole (the map's cut, not a coast) */
+{
+    const uint8_t *q = LAND;
+    uint32_t r;
+    for (r = 0; r < NLAND_RINGS; r++) {
+        int32_t n = q[0] | q[1] << 8, gx = q[2] | q[3] << 8, gy = q[4] | q[5] << 8, gx0 = gx, gy0 = gy, k, pgy = gy;
+        float px, py, rel = wrap180((float)gx * 0.2f - 180.0f - vm_lon), x, y;
+        vm_xy((float)gy * 0.2f - 90.0f, (float)gx * 0.2f - 180.0f, &px, &py);
+        q += 6;
+        for (k = 0; k <= n; k++) {
+            float r2;
+            if (k < n) {
+                gx += (int8_t)q[0];
+                gy += (int8_t)q[1];
+                q += 2;
+            } else {                     /* the last point back to the first */
+                gx = gx0;
+                gy = gy0;
+            }
+            vm_xy((float)gy * 0.2f - 90.0f, (float)gx * 0.2f - 180.0f, &x, &y);
+            r2 = wrap180((float)gx * 0.2f - 180.0f - vm_lon);
+            if (fm_fabsf(r2 - rel) < 90.0f && (gy > 30 || pgy > 30))   /* (30: 84 S) */
+                vm_line(px, py, x, y, grey(115), y0, 0);
+            px = x, py = y, rel = r2, pgy = gy;
+        }
+    }
+}
+static int32_t voy_km(void)              /* from here to B, on the Earth (km) */
+{
+    if (voy.b_lat100 == here_lat100() && voy.b_lon100 == here_lon100())
+        return 0;
+    float a1 = (float)here_lat100() * 0.000174532925f, a2 = (float)voy.b_lat100 * 0.000174532925f;
+    float dl = wrap180((float)(voy.b_lon100 - here_lon100()) / 100.0f) * 0.0174532925f;
+    float s1 = fm_sinf((a2 - a1) * 0.5f), s2 = fm_sinf(dl * 0.5f);
+    float h = fm_clampf(fm_sqrtf(s1 * s1 + fm_cosf(a1) * fm_cosf(a2) * s2 * s2), 0.0f, 1.0f);   /* haversine */
+    float as = 1.5707963f - fm_sqrtf(1.0f - h) * (1.5707288f + h * (-0.2121144f + h * (0.0742610f - 0.0187293f * h)));
+    return round_f(2.0f * 6371.0f * as);  /* (asin: Abramowitz and Stegun 4.4.45) */
+}
+static void voy_page_input(uint32_t down, int32_t e1, int32_t e2, int32_t e3, int32_t e4)
+{
+    int32_t z = 1 << voy.zoom, step = 200 / z;   /* K1, K2: 2 degrees zoomed out, a quarter at x8 */
+    if (!voy.going) {                    /* B, and the length: before leaving */
+        if (e1) {
+            int32_t lon = voy.b_lon100 + e1 * step;
+            voy.b_lon100 = (int16_t)(lon > 18000 ? lon - 36000 : lon < -18000 ? lon + 36000 : lon);
+        }
+        if (e2)
+            voy.b_lat100 = (int16_t)fm_clampf((float)(voy.b_lat100 + e2 * step), -8900.0f, 8900.0f);
+        if (e4)
+            voy.dur = (uint8_t)fm_clampf((float)voy.dur + (e4 > 0 ? 1.0f : -1.0f), 0.0f, 9.0f);
+    }
+    if (e3)
+        voy.zoom = (uint8_t)fm_clampf((float)voy.zoom + (e3 > 0 ? 1.0f : -1.0f), 0.0f, 3.0f);
+    if (!(down >> B_SAVE & 1u))
+        return;
+    if (voy.going == 2) {
+        voy_stop();
+    } else if (voy.going == 1) {         /* still asking B's weather: off */
+        voy.going = 0;
+        app_say("VOYAGE", "CALLED OFF");
+    } else if (voy.b_lat100 == here_lat100() && voy.b_lon100 == here_lon100()) {
+        app_say("VOYAGE", "B IS HERE");
+    } else {
+        voy.going = 1;                   /* B's weather first (net_tick) */
+        app_say("VOYAGE", "ASKING B'S WEATHER");
+    }
+}
+static void voy_page(void)
+{
+    float ax, ay, bx, by, cx = 0.0f, cy = 0.0f, la, lo, p = voy.going == 2 ? voy_p() : 0.0f;
+    int32_t s, i, z = 1 << voy.zoom;
+    char a[32], b[32];
+    vm_ppd = 240.0f / 360.0f * (float)z;
+    vm_lat = vm_lon = 0.0f;              /* zoomed out: the whole world; in: B, or the voyage where it is */
+    if (z > 1) {
+        if (voy.going == 2) {
+            voy_at(p, &vm_lat, &vm_lon);
+        } else {
+            vm_lat = (float)voy.b_lat100 / 100.0f;
+            vm_lon = (float)voy.b_lon100 / 100.0f;
+        }
+    }
+    if (voy.going == 2) {
+        voy_at(0.0f, &la, &lo);
+        vm_xy(la, lo, &ax, &ay);
+        voy_at(p, &la, &lo);
+        vm_xy(la, lo, &cx, &cy);
+    } else {
+        vm_xy((float)here_lat100() / 100.0f, (float)here_lon100() / 100.0f, &ax, &ay);
+    }
+    vm_xy((float)voy.b_lat100 / 100.0f, (float)voy.b_lon100 / 100.0f, &bx, &by);
+    for (s = 0; s < 5; s++) {
+        int32_t y0 = s * 48;
+        cv_begin(240, 48, C_BLACK);
+        vm_land(y0);
+        {   /* the way: dotted, from A (or here) to B, in 48 steps (a step across the map's edge left out) */
+            float la0 = voy.going == 2 ? (float)voy.a_lat100 / 100.0f : (float)here_lat100() / 100.0f;
+            float lo0 = voy.going == 2 ? (float)voy.a_lon100 / 100.0f : (float)here_lon100() / 100.0f;
+            float dlo = wrap180((float)voy.b_lon100 / 100.0f - lo0), dla = (float)voy.b_lat100 / 100.0f - la0;
+            float px = ax, py = ay;
+            for (i = 1; i <= 48; i++) {
+                float t = (float)i / 48.0f, x, y;
+                vm_xy(la0 + dla * t, lo0 + dlo * t, &x, &y);
+                if (fm_fabsf(x - px) < 120.0f)
+                    vm_line(px, py, x, y, voy.going == 2 && t <= p ? C_VOY : grey(150), y0, 1);
+                px = x, py = y;
+            }
+        }
+        if (ay >= VM_Y0 && ay < VM_Y0 + VM_H)   /* A: a square; B: a cross; on the way, where it is */
+            cv_rect((int32_t)ax - 2, (int32_t)ay - 2 - y0, 5, 5, C_WHITE);
+        if (by >= VM_Y0 + 6 && by < VM_Y0 + VM_H - 6) {
+            for (i = 3; i <= 7; i++) {
+                cv_pset((int32_t)bx + i, (int32_t)by - y0, C_VOY);
+                cv_pset((int32_t)bx - i, (int32_t)by - y0, C_VOY);
+                cv_pset((int32_t)bx, (int32_t)by + i - y0, C_VOY);
+                cv_pset((int32_t)bx, (int32_t)by - i - y0, C_VOY);
+            }
+        }
+        if (voy.going == 2 && cy >= VM_Y0 + 6 && cy < VM_Y0 + VM_H - 6) {
+            cv_rect((int32_t)cx - 1, (int32_t)cy - 1 - y0, 3, 3, C_WHITE);
+            star_ring((int32_t)cx, (int32_t)cy, 5, C_VOY, y0);
+        }
+        /* the words: the title and the zoom; under the map A, B, the distance, what to do */
+        cv_text(8, 8 - y0, &FONT_S, "VOYAGE", C_TXT);
+        if (voy.going == 2)
+            put(put_int(a, (int32_t)(p * 100.0f)), "%");
+        else
+            put_int(put(a, "x"), z);
+        cv_text(232 - text_w(&FONT_S, a), 8 - y0, &FONT_S, a, voy.going == 2 ? C_VOY : C_MID);
+        put(a, voy.going == 2 ? "A " : "HERE ");
+        if (voy.going == 2)
+            place_of(a + 2, voy.a_lat100, voy.a_lon100);
+        else
+            place_of(a + 5, here_lat100(), here_lon100());
+        cv_text(8, 188 - y0, &FONT_S, a, C_MID);
+        place_of(put(b, "B "), voy.b_lat100, voy.b_lon100);
+        cv_text(8, 204 - y0, &FONT_S, b, C_VOY);
+        if (voy.going == 2)
+            copy(a, "SAVE STOP  ARP SKY", sizeof a);
+        else if (voy.going == 1)
+            copy(a, "B'S WEATHER...  SAVE OFF", sizeof a);
+        else
+            put(put(put(put_int(put(put_int(a, voy_km()), " KM  "), VOY_MIN[voy.dur]), " MIN"), "  "), "SAVE GO");
+        cv_text(8, 220 - y0, &FONT_S, a, C_LOW);
+        cv_blit(0, (uint32_t)y0);
+    }
+}
+
 /* ------------------------------------------------------------------ WiFi (ENV) --- */
 /* a row of the WiFi pages: 14 rows of 16 px, the text left, another right-aligned */
 static void wrow(int i, const char *t, uint16_t c, const char *right, uint16_t rc)
@@ -1785,16 +2193,21 @@ static void lights(void)
     } else if (ui.screen == 4) {
         db = nav | (ui.radio ? 0u : 1u << B_PLAY) | 1u << B_OCTDN | 1u << B_OCTUP | (ui.radio == 2 ? 1u << B_SAVE : 0u);
         bb = 1u << B_FX | (ui.radio == 2 && ui.r_target ? 1u << B_SAVE : 0u);
+    } else if (ui.screen == 5) {
+        db = nav | 1u << B_SEQ | 1u << B_SAVE | 1u << B_PLAY | 1u << B_OCTDN | 1u << B_OCTUP;
+        bb = 1u << B_ARP | (voy.going ? 1u << B_SAVE : 0u) | (sky.on ? LED_PLAY_GREEN : 0u);
     } else {
-        db = 1u << B_HOME | 1u << B_EDIT | 1u << B_SEL | 1u << B_GLO | 1u << B_LFO | 1u << B_ARP | 1u << B_PLAY | 1u << B_FX
-             | 1u << B_OCTDN | 1u << B_OCTUP | 1u << B_ENV;
+        db = 1u << B_HOME | 1u << B_EDIT | 1u << B_SEL | 1u << B_GLO | 1u << B_LFO | 1u << B_ARP | 1u << B_SEQ | 1u << B_PLAY
+             | 1u << B_FX | 1u << B_OCTDN | 1u << B_OCTUP | 1u << B_ENV;
         bb |= set.manual ? 1u << B_EDIT : 1u << B_HOME;
         if (ui.view_sky)
             bb |= 1u << B_LFO;
         if (weather_age_min() >= 0)
             bb |= 1u << B_ENV;           /* the weather is the network's */
         if (set.arp)
-            bb |= 1u << B_ARP;
+            bb |= 1u << B_SEQ;
+        if (voy.going || voy.away)
+            bb |= 1u << B_ARP;           /* on a voyage, or away */
         if (ui.radio)
             bb |= 1u << B_FX;
         if (sky.planet != PL_NONE)
@@ -1851,7 +2264,7 @@ static void input(void)
     if (ui.screen == 4 && ui.radio)      /* RADIO on: PLAY asleep */
         down &= ~(1u << B_PLAY);
     if (down || (kdown && !ui.view_sky) || e1 || e2 || e3 || e4 || ea || ep || es)   /* a new touch (a held button is
-                                          * not one; on the sky alone, LFO or ARP, the keys only play) */
+                                          * not one; on the sky alone, LFO or SEQ, the keys only play) */
         ui.touched = now;
     if (down >> B_ENV & 1u) {            /* WiFi, and back */
         to_screen(ui.screen == 2 || ui.screen == 3 ? 0 : 2);
@@ -1865,15 +2278,23 @@ static void input(void)
         to_screen(ui.screen == 4 ? 0 : 4);
         return;
     }
-    {   /* the page buttons work from any page: on WiFi's and RADIO's, they leave it and do what they do (the
-         * password's HOME and SEL are its DELETE and BACK) */
-        uint32_t nav = 1u << B_HOME | 1u << B_EDIT | 1u << B_GLO | 1u << B_LFO | 1u << B_ARP | 1u << B_SEL;
+    if (down >> B_ARP & 1u) {            /* VOYAGE's map, and back */
+        if (ui.screen != 5)
+            voy_open();
+        to_screen(ui.screen == 5 ? 0 : 5);
+        return;
+    }
+    {   /* the page buttons work from any page: on WiFi's, RADIO's and VOYAGE's, they leave it and do what they do
+         * (WiFi's SEQ is its own; the password's HOME and SEL are its DELETE and BACK) */
+        uint32_t nav = 1u << B_HOME | 1u << B_EDIT | 1u << B_GLO | 1u << B_LFO | 1u << B_SEQ | 1u << B_SEL;
         int wifi = ui.screen == 2 || ui.screen == 3;
+        if (wifi)
+            nav &= ~(1u << B_SEQ);
         if (ui.screen == 3)
             nav &= ~(1u << B_HOME | 1u << B_SEL);
         if (ui.screen == 4)              /* RADIO's: any button but SAVE leaves it (the role off) */
             nav = ~(1u << B_SAVE | 1u << B_PLAY);
-        if ((wifi || ui.screen == 4) && (down & nav)) {
+        if ((wifi || ui.screen == 4 || ui.screen == 5) && (down & nav)) {
             to_screen(0);
             es = ea = 0;
         } else if (wifi && wifi_page_input(down, es, ea)) {
@@ -1882,7 +2303,11 @@ static void input(void)
             radio_page_input(down, es, ea);
             es = ea = ep = e1 = e2 = e3 = e4 = 0;
             down &= ~(1u << B_SAVE);
-        } else if (ui.screen == 1 && (down & (1u << B_LFO | 1u << B_ARP | 1u << B_SEL))) {
+        } else if (ui.screen == 5) {     /* VOYAGE: its knobs and SAVE; the keys, PLAY and PRESET go on */
+            voy_page_input(down, e1, e2, e3, e4);
+            es = ea = e1 = e2 = e3 = e4 = 0;
+            down &= ~(1u << B_SAVE);
+        } else if (ui.screen == 1 && (down & (1u << B_LFO | 1u << B_SEQ | 1u << B_SEL))) {
             to_screen(0);                /* the settings: the sky's buttons go back to it (saving) and act */
             es = ea = ep = 0;
         }
@@ -1891,8 +2316,9 @@ static void input(void)
         to_screen(ui.screen == 1 ? 0 : 1);
         return;
     }
-    if (down >> B_HOME & 1u) {           /* back to nature, the readings */
+    if (down >> B_HOME & 1u) {           /* back to nature, the readings; home, from a voyage */
         to_screen(0);
+        voy_home();
         set.manual = 0;
         nature_to_sky();                 /* the weather as it is, at once (the sun and the moon follow: last_sky) */
         ui.view_sky = 0;
@@ -1967,7 +2393,7 @@ static void input(void)
     }
     if (down >> B_OCTDN & 1u && set.octave > 1) { set.octave--; ui.dirty = 1; }
     if (down >> B_OCTUP & 1u && set.octave < 4) { set.octave++; ui.dirty = 1; }
-    if (down >> B_ARP & 1u && ui.screen == 0) {   /* the ARP screen: the sky, the line, what it plays lighting up */
+    if (down >> B_SEQ & 1u && ui.screen == 0) {   /* the arpeggiator's screen: the sky, the line, what it plays lighting up */
         if (!set.arp || !ui.view_sky) {
             set.arp = 1;
             ui.view_sky = 1;
@@ -2052,14 +2478,17 @@ void app_frame(void)
         }
     }
     input();
-    if (ui.last_sky == 0 || now - ui.last_sky > 2000u) {   /* the sky every 2 s: the stars move slowly */
+    if (ui.last_sky == 0 || now - ui.last_sky > (voy.going == 2 && fm_fabsf(voy_p() - 0.5f) < VOY_DISSOLVE ? 150u : 2000u)) {
+                                         /* the sky every 2 s: the stars move slowly (halfway on a voyage, often) */
         ui.last_sky = now ? now : 1u;
         sky_update();
     }
     net_tick(now);
     if (now - ui.last_weather >= 1000u) {   /* nature's weather: the network's, else random at its real pace */
         float hours = (float)(now - ui.last_weather) / 3600000.0f;
-        if (ui.net_at && now - ui.net_at < WX_FRESH_MS) {   /* glide to what came, over a few minutes */
+        if (voy.going == 2) {            /* on the way: A's weather into B's */
+            voy_tick(now);
+        } else if (ui.net_at && now - ui.net_at < WX_FRESH_MS) {   /* glide to what came, over a few minutes */
             float k = 1.0f - fm_expf(-hours * 60.0f / 4.0f);
             nat.clouds += (ui.wx_cloud - nat.clouds) * k;
             nat.press += (ui.wx_press - nat.press) * k;
@@ -2115,8 +2544,10 @@ void app_frame(void)
         wifi_page();
     else if (ui.screen == 3)
         pass_page();
-    else
+    else if (ui.screen == 4)
         radio_page();
+    else
+        voy_page();
     {
         uint32_t i;
         for (i = 0; i < NSTARS; i++)     /* the played stars fade back */
@@ -2140,8 +2571,16 @@ static net_res_t host_res = {2, 85, 10032, -14, 3600, 233, 61, "Mon, 26 Oct 2026
 #endif
 int net_fetch(int32_t lat100, int32_t lon100)
 {
+#ifdef PLAT_WEB
     (void)lat100;
     (void)lon100;
+#else                                    /* on the computer: a weather of each place's own, the same every time */
+    uint32_t h = (uint32_t)(lat100 * 7919 + lon100 * 104729) * 2654435761u;
+    host_res.cloud = (int32_t)(h >> 8 & 127u) % 101;
+    host_res.press10 = 9800 + (int32_t)(h >> 16 & 1023u) % 600;
+    host_res.wcode = host_res.cloud < 20 ? 0 : host_res.cloud < 60 ? 2 : (int32_t)(h >> 4 & 1u) ? 61 : 3;
+    host_res.utc_s = (lon100 + (lon100 >= 0 ? 750 : -750)) / 1500 * 3600;
+#endif
     return 0;
 }
 int net_busy(void) { return 0; }

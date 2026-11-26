@@ -97,7 +97,7 @@ The sound is not the planet's: the pad is the weather's.
 A line sweeps the square left to right in 16 s. Each star brighter than magnitude 3 it crosses plays a note in the
 moon's voice: its height a degree of the scale now (two octaves up from the root two octaves over the drones), its
 brightness the loudness, its place across the screen its place in the stereo, two at most at once. The planets it crosses pluck too, louder (the chosen one most). Clouds and daylight
-hide stars, so they thin the arpeggio out; a clear night is busy. On the ARP screen the line shows, and what plays
+hide stars, so they thin the arpeggio out; a clear night is busy. On the SEQ screen the line shows, and what plays
 lights up: a star flashes, a planet glows.
 
 ## Chords
@@ -142,7 +142,7 @@ Sun height, not clock time: the sound follows the seasons by itself, and dawn so
 ENV opens the WiFi page, and closes it. The state, the network, the signal, how old the weather is, then the networks
 around, the strongest first (SAVED: known). SELECT picks one, SAVE joins it (a known or open one at once, else the
 password), SEQ looks again, REC turns WiFi off or on (offline), PLAY fetches now. The page buttons (HOME, EDIT,
-GLO, LFO, ARP, SEL, FX) leave it and do what they do.
+GLO, LFO, ARP, SEL, FX) leave it and do what they do; SEQ is the WiFi page's own.
 
 The password: SELECT turns through the characters, ALGO jumps a group (abc ABC 123 #+=), PLAY adds, HOME deletes,
 SAVE joins (8 characters at least), SEL goes back to the list.
@@ -190,6 +190,31 @@ at a place it is given, it pairs like an FM-1 (PAD or BELLS), plays by itself (t
 pad long notes) or its keys (the FM-1's 27), and lights the partner's notes, so one FM-1 can try a pair alone.
 (The 0.21 radio's shared chord sequence and its page are retired: `web/site/radio`, unpublished.)
 
+## VOYAGE (ARP)
+
+ARP opens the world's map: flat (longitude across, latitude up), the land's outline only (Natural Earth's 1:110m land,
+public domain: `cosmos/data/land.txt` from `tools/land_from_ne.py`, packed by `cosmos/tools/gen_land.py`, 7.5 KB). A
+square is here (A), a cross is B. K1 moves B east and west, K2 north and south (2 degrees a step zoomed out, a
+quarter at x8), K3 zooms (x1 the whole world; x2, x4, x8 round B, or round the voyage on its way), K4 the voyage's
+length (1, 2, 3, 5, 10, 15, 20, 30, 45 or 60 minutes). Under the map: A, B, the distance, the length. SAVE goes.
+
+- First B's weather, fetched like home's (Open-Meteo at B's coordinates; with no network, one of its own, and its
+  offset from UTC the sun's).
+- On the way the dot crosses the map in a straight line, round the shorter side. The clouds and the pressure glide
+  from A's to B's; the weather's kind, so the pad (at the next chord), the pressure's trend and the clock's offset
+  change halfway. Kp is the whole Earth's: it stays. The sky too passes from A to B without the places between:
+  the sun's height (with what it does: the filter, the mode, day and night) glides from A's to B's; the screen shows
+  A's stars, planets and moon, then B's, dissolving star by star around halfway. The readings' last line:
+  `VOYAGE 42% TO 35.9N 132.5E`; the place line shows where the dot is.
+- SAVE on the way stops there: that place is here, its weather asked at once.
+- Arrived, B is here: its sky, its weather every half hour (`AWAY: WEATHER n MIN AGO`), the RADIO's star there too.
+  From there a new voyage starts at B.
+- HOME is home at once, from anywhere, with home's weather as it was left (and asked again). Nothing of a voyage is
+  saved: every power-on starts home.
+
+ARP again, or any page button, goes back to the sky; the voyage goes on. FONT_L is left out for the room (the
+panel's own screens, safe mode and crashes, use FONT_M: `APP_BIG_FONT` in `app.h`).
+
 ## Offline mode
 
 With WiFi off (REC on the WiFi page), or no network in range:
@@ -210,9 +235,10 @@ With WiFi off (REC on the WiFi page), or no network in range:
 | **PRESETS** | the drone's level, in HOME and in EDIT: 0 to 100 % in steps of 5, kept with the settings |
 | **SEL** | the next planet up (in EDIT any of the seven classical ones), or none |
 | **LFO** | the sky alone (a button or a knob brings the readings back for two seconds; the keys only play), and back |
-| **ARP** | the ARP screen: the sky, the arpeggiator on, its line, what it plays lighting up; again: off, and back |
+| **SEQ** | the arpeggiator's screen: the sky, the arpeggiator on, its line, what it plays lighting up; again: off, and back |
+| **ARP** | VOYAGE, the world's map (above), and back; lit while a voyage is on or COSMOS is away |
 | **FX** | the RADIO page (above), and back |
-| **Pages** | HOME, EDIT, GLO, ENV, LFO, ARP, SEL and FX work from any page: on the settings or WiFi's they leave it (saving) and do what they do (the WiFi password keeps HOME and SEL as its DELETE and BACK); PLAY and the octave work on the settings too |
+| **Pages** | HOME, EDIT, GLO, ENV, LFO, SEQ, ARP, SEL and FX work from any page: on the settings or WiFi's they leave it (saving) and do what they do (the WiFi password keeps HOME and SEL as its DELETE and BACK); PLAY and the octave work on the settings too |
 | **GLO** | the settings: latitude, longitude, UTC offset, summer time, date, time (local), the pad (AUTO: the weather's, or one of the fifteen), the star voice (AUTO: the moon's, one of the eight, or PAD: the pad's own), the tuning (COSMIC, EQUAL or NATURAL) |
 | **PLAY** | the sky stopped or playing; stopped, a key still sounds its chord, held and for 10 s after. Stopping saves |
 | **Lights** | the buttons that do something glow, the ones in use bright; the keys of the scale glow, the root's bright |
@@ -241,7 +267,7 @@ SKY 100%         UPD 12 MIN
 - The top line names the pad playing. The second reading is the weather's kind and the cloud cover. PRESS shows
   the trend (^ rising, v falling, = steady), and on its right the chord's colour. Kp's right side names the rhythm
   when the Sun stirs (STARGATE, PULSAR, in orange). The moon's right side names the star voice.
-- The readings stay. On the sky alone (LFO, ARP) they fade in (0.3 s) on a touch, hold (2 s after the last touch),
+- The readings stay. On the sky alone (LFO, SEQ) they fade in (0.3 s) on a touch, hold (2 s after the last touch),
   then fade out (1.5 s). See `docs/img/rome-2026-11-09-fade.gif`.
 - Saving to flash silences the sound for a moment, so COSMOS saves only when PLAY stops it and when the settings
   close.

@@ -16,6 +16,9 @@ from <https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK>.
 
 ## Data
 
+VOYAGE's land outline (`cosmos/data/land.txt`) is Natural Earth's 1:110m land, simplified, public domain
+(<https://www.naturalearthdata.com>).
+
 The stars (`cosmos/data/stars.csv`) are the 500 brightest of the Yale Bright Star Catalogue, 5th edition (Hoffleit
 and Warren, 1991), public domain. The planets' orbits are JPL's approximate Keplerian elements (Standish).
 
