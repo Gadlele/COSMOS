@@ -837,6 +837,10 @@ static void net_tick(uint32_t now)
     int conn = plat_wifi_state() == WIFI_CONNECTED;
     if (conn && !ui.was_connected)
         ui.net_try = 0;                  /* just connected: at once */
+    if (conn && set.offline) {           /* turned on from outside (the WiFi page on the site, over USB): online */
+        set.offline = 0;
+        save();
+    }
     ui.was_connected = conn;
     if (ui.fetching) {
         const net_res_t *r;

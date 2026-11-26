@@ -9,7 +9,7 @@ over your location, stars, moon and planets, with the readings in plain white te
 The slower a source changes, the deeper its effect: the moon and the pressure decide what instrument COSMOS is
 this week, a geomagnetic storm tears it apart now and then, the clouds and the sun colour it through the day.
 
-**Version 1.2.** [Install it](https://gadlele.github.io/COSMOS/install/) from Chrome or Edge, or
+**Version 1.3.** [Install it](https://gadlele.github.io/COSMOS/install/) from Chrome or Edge, or
 [try it in your browser](https://gadlele.github.io/COSMOS/try/) first: the firmware itself on a simulated FM-1. See
 [docs/DESIGN.md](docs/DESIGN.md) for how it works, [docs/MEMORY.md](docs/MEMORY.md) for the memory budget and
 [docs/BUILDING.md](docs/BUILDING.md) to build it.

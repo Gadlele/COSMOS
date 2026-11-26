@@ -148,6 +148,12 @@ GLO, LFO, ARP, SEL, FX) leave it and do what they do; SEQ is the WiFi page's own
 The password: SELECT turns through the characters, ALGO jumps a group (abc ABC 123 #+=), PLAY adds, HOME deletes,
 SAVE joins (8 characters at least), SEL goes back to the list.
 
+From a computer: the site's WiFi page (`web/site/wifi`, published at /COSMOS/wifi/) finds the FM-1 over USB the way
+the installer does (fm1-base's `fm1ota.js`, copied beside it) and speaks fm1-base's WiFi frames (F0 7D 4C 57:
+status, scan and the networks found, join with a password, the networks kept, forget): the password typed on the
+computer's keyboard, through the cable only. WiFi off (offline) is turned on from there; once connected, COSMOS is
+online again (`set.offline` cleared and saved, net_tick).
+
 ## RADIO COSMOS (FX)
 
 FX opens the RADIO page (with WiFi). ALGO picks the role:
