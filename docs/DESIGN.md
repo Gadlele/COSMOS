@@ -70,8 +70,10 @@ No presets, no scenes: the sound moves continuously, never jumps.
 
 ## Planets: notes and chords
 
-The seven classical planets, the Sun and the Moon among them, can be chosen (SELECT) while they are up (in EDIT,
-any of them); when one sets, it goes. A planet brings two things:
+The seven classical planets, the Sun and the Moon among them. One is always chosen: at power-on one at random among
+those up (none up: any of the seven), so each start has its own key and chords; SEL goes to the next one up (in
+EDIT, any of them); when the chosen one sets (from nature, on a voyage too), another up takes its place, at random.
+Nothing of it is saved. A planet brings two things:
 
 - **Its note**: its period raised by octaves into hearing (Hans Cousto's cosmic octave): the Earth's year for the Sun,
   the synodic month for the Moon, each planet's orbit. TUNING COSMIC plays the exact frequency, EQUAL the nearest
@@ -104,9 +106,8 @@ lights up: a star flashes, a planet glows.
 
 Always a chord on a degree of the scale, in the sun's mode, coloured by the pressure: high and steady, the triad
 and its octave; falling, the seventh; deep down, suspended with the ninth. The drone holds its root and fifth, the
-pad the four notes an octave up. Four chords always go round, one every 10 s: with no planet on the last
-key's note, with one on the planet's; a key plays the chord of the scale on its note for a while (held and 10 s
-after).
+pad the four notes an octave up. Four chords always go round, one every 10 s, on the chosen planet's note; a key
+plays the chord of the scale on its note for a while (held and 10 s after).
 
 ## Sources and what they do
 
@@ -202,9 +203,10 @@ length (1, 2, 3, 5, 10, 15, 20, 30, 45 or 60 minutes). Under the map: A, B, the 
   offset from UTC the sun's).
 - On the way the dot crosses the map in a straight line, round the shorter side. The clouds and the pressure glide
   from A's to B's; the weather's kind, so the pad (at the next chord), the pressure's trend and the clock's offset
-  change halfway. Kp is the whole Earth's: it stays. The sky too passes from A to B without the places between:
-  the sun's height (with what it does: the filter, the mode, day and night) glides from A's to B's; the screen shows
-  A's stars, planets and moon, then B's, dissolving star by star around halfway. The readings' last line:
+  change halfway. Kp is the whole Earth's: it stays. The sky needs no network: it is computed where the dot is, so
+  it moves on the way (the stars turn going east or west, tilt going north or south), and the sun with it, with what
+  it does (the filter, the mode, day and night): flying west the sun can set, or a night can come between two days.
+  The sky is computed every 0.4 s on the way (every 2 s at rest). The readings' last line:
   `VOYAGE 42% TO 35.9N 132.5E`; the place line shows where the dot is.
 - SAVE on the way stops there: that place is here, its weather asked at once.
 - Arrived, B is here: its sky, its weather every half hour (`AWAY: WEATHER n MIN AGO`), the RADIO's star there too.
@@ -212,7 +214,8 @@ length (1, 2, 3, 5, 10, 15, 20, 30, 45 or 60 minutes). Under the map: A, B, the 
 - HOME is home at once, from anywhere, with home's weather as it was left (and asked again). Nothing of a voyage is
   saved: every power-on starts home.
 
-ARP again, or any page button, goes back to the sky; the voyage goes on. FONT_L is left out for the room (the
+A planet that sets on the way gives way to another (below). ARP again, or any page button, goes back to the sky;
+the voyage goes on. FONT_L is left out for the room (the
 panel's own screens, safe mode and crashes, use FONT_M: `APP_BIG_FONT` in `app.h`).
 
 ## Offline mode
@@ -233,7 +236,7 @@ With WiFi off (REC on the WiFi page), or no network in range:
 | **ENV** | the WiFi page (above), and back; lit bright while the weather is the network's |
 | **EDIT** | everything by hand, the readings held on the screen: K1 the sun's height, K2 the clouds, K3 the pressure (its trend: the way it was turned), K4 Kp, ALGO the moon's cycle |
 | **PRESETS** | the drone's level, in HOME and in EDIT: 0 to 100 % in steps of 5, kept with the settings |
-| **SEL** | the next planet up (in EDIT any of the seven classical ones), or none |
+| **SEL** | the next planet up (in EDIT any of the seven classical ones); one is always chosen |
 | **LFO** | the sky alone (a button or a knob brings the readings back for two seconds; the keys only play), and back |
 | **SEQ** | the arpeggiator's screen: the sky, the arpeggiator on, its line, what it plays lighting up; again: off, and back |
 | **ARP** | VOYAGE, the world's map (above), and back; lit while a voyage is on or COSMOS is away |
@@ -243,7 +246,7 @@ With WiFi off (REC on the WiFi page), or no network in range:
 | **PLAY** | the sky stopped or playing; stopped, a key still sounds its chord, held and for 10 s after. Stopping saves |
 | **Lights** | the buttons that do something glow, the ones in use bright; the keys of the scale glow, the root's bright |
 | **OCT− / OCT+** | the octave |
-| **Keys** | the chord on the key's note: with no planet the new root; with one, the chord of its scale on the nearest degree, held and for 10 s after |
+| **Keys** | the chord of the planet's scale on the nearest degree to the key's note, held and for 10 s after |
 | **MASTER** | the volume |
 | **Battery** | on the readings' and the settings' bottom lines |
 

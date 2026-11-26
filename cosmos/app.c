@@ -14,10 +14,12 @@
  *   EDIT   everything by hand, the readings held on the screen: K1 the sun's height, K2 the clouds, K3 the pressure,
  *          K4 Kp, ALGO the moon's cycle; the pressure's trend follows the way K3 was turned
  *   PRESET the drone's level, always (0 .. 100 %, in steps of 5)
- *   SEL    the next planet up (in EDIT any of the seven classical ones, the Sun and the Moon among them), or none
+ *   SEL    the next planet up (in EDIT any of the seven classical ones, the Sun and the Moon among them); one is
+ *          always chosen: at power-on at random among those up, and when it sets another up
  *   LFO    the sky alone, and back      SEQ the arpeggiator's screen, the arpeggio on; again, off and back
  *   ARP    VOYAGE, the world's map: K1 and K2 move B, K3 zooms, K4 the voyage's length, SAVE goes (again: stops
- *          where it is). From here (A) to B the weather and the sky glide, the pad changing halfway; then B is here
+ *          where it is). From here (A) to B the weather glides, the pad changing halfway, the sky computed where the
+ *          dot is; then B is here
  *          until HOME brings it home (and every power-on starts home). ARP again, or any page button: the sky
  *   FX     the RADIO page (radio.c, with WiFi): ALGO the role, a PLAYER (paired at random with another: one plays
  *          the PAD, the other the BELLS, each hearing the other) or a LISTENER (it hears a pair, or one alone: SAVE
@@ -32,7 +34,7 @@
  * THE SOUND. The pad is the weather's (its kind: the network's code, or guessed from the clouds and the pressure), by
  * day or by night (choose_sound: PAD_DAY, PAD_NIGHT); the star voice is the moon's phase; the rhythm is Kp's (from 4
  * STARGATE, from 5 PULSAR). The settings' PAD and STARS can fix them. The mode is the sun's height's (Phrygian at night .. Lydian at noon). Four chords go round, one every 10 s:
- * with no planet on the last key's note; a chosen planet brings its note (its period raised by octaves into hearing:
+ * on the chosen planet's note (one always is): it brings its note (its period raised by octaves into hearing:
  * Cousto's cosmic octave, exact under TUNING COSMIC, the nearest tempered note under EQUAL; under NATURAL a natural
  * note each, the spheres' classical order from the Moon's C to Saturn's B) and four chords of its own on its scale;
  * a key then plays the chord of the scale on its note, held and for 10 s after, and the four come back. With the sky stopped, a key still sounds its chord, held and for 10 s after.
@@ -177,7 +179,6 @@ static struct {
     int16_t home_code;
     int8_t home_trend;
 } voy;
-#define VOY_DISSOLVE 0.06f               /* halfway, the sky of A dissolves into B's: this much either side */
 static float voy_p(void)                 /* the voyage's progress, 0..1 */
 {
     float p = (float)(plat_ms() - voy.t0) / (float)voy.dur_ms;
@@ -585,29 +586,11 @@ static void place(altaz_t p, int32_t pl, float mag, int edge, float dark_below)
 /* where everything is now; the sun and the moon to the engine; which planets are seen */
 static void sky_update(void)
 {
-    float lat = (float)here_lat100() / 100.0f, lon = (float)here_lon100() / 100.0f, p = 0.0f, mix = 9.0f;
-    int32_t i, x, y, t = (int32_t)(unix_now() - (uint32_t)J2000_UNIX);
-    float sun_from = 0.0f;
-    if (voy.going == 2) {                /* on the way: A's sky, then B's from halfway; the sun's height glides */
-        sky_now_t other;
-        float la, lo;
-        p = voy_p();
-        mix = fm_fabsf(p - 0.5f) / VOY_DISSOLVE;
-        voy_at(0.0f, &la, &lo);
-        astro_now(t, la, lo, &other);
-        sun_from = other.sun_alt;
-        voy_at(1.0f, &lat, &lon);
-        if (p < 0.5f)
-            voy_at(0.0f, &lat, &lon);
-    }
-    astro_now(t, lat, lon, &now_sky);
-    if (voy.going == 2) {
-        sky_now_t b;
-        float la, lo;
-        voy_at(1.0f, &la, &lo);
-        astro_now(t, la, lo, &b);
-        now_sky.sun_alt = sun_from + (b.sun_alt - sun_from) * p;
-    }
+    float lat = (float)here_lat100() / 100.0f, lon = (float)here_lon100() / 100.0f;
+    int32_t i, x, y;
+    if (voy.going == 2)                  /* on the way: the sky where the dot is (no network: it is computed) */
+        voy_at(voy_p(), &lat, &lon);
+    astro_now((int32_t)(unix_now() - (uint32_t)J2000_UNIX), lat, lon, &now_sky);
     if (!set.manual) {                  /* nature; EDIT leaves them in the hands */
         sky.sun = now_sky.sun_alt;
         sky.moon = now_sky.moon;
@@ -627,10 +610,6 @@ static void sky_update(void)
         altaz_t p = astro_altaz((float)STARS[i].ra * (FM_TWO_PI / 65536.0f), (float)STARS[i].dec * 0.000174532925f,
                                 now_sky.lst, lat * 0.0174532925f);
         float mag = (float)STARS[i].mag10 / 10.0f;
-        if (mix < 1.0f && (float)((uint32_t)i * 2654435761u >> 24) > mix * 255.0f) {
-            star_y[i] = 255;             /* halfway: A's sky dissolving into B's, star by star */
-            continue;
-        }
         if (mag <= fm_maxf(limit, STAR_FLOOR) && astro_project(p, &x, &y)) {
             star_x[i] = (uint8_t)x;
             star_y[i] = (uint8_t)y;
@@ -648,13 +627,20 @@ static void sky_update(void)
               PL_MERCURY + i == PL_VENUS || PL_MERCURY + i == PL_JUPITER ? -2.0f : -5.0f);
     place(now_sky.sun_pos, PL_SUN, -26.0f, 6, 90.0f);
     place(now_sky.moon_pos, PL_MOON, sky.sun < 8.0f ? -12.0f : 99.0f, 5, 90.0f);
-    if (mix < 0.5f)                      /* (the planets too, in the dissolve's middle) */
-        for (i = 0; i < PL_N; i++)
-            pl_drawn[i] = 0;
-    /* from nature, a chosen planet that sets takes its engine and its chords along (EDIT keeps it) */
-    if (!set.manual && sky.planet != PL_NONE && !pl_up[sky.planet]) {
-        app_say(planet_name(sky.planet), "GONE");
-        sky.planet = PL_NONE;
+    /* a planet always: at power-on one at random among those up; from nature, one that sets gives way to another
+     * (EDIT keeps it) */
+    if (sky.planet == PL_NONE || (!set.manual && !pl_up[sky.planet])) {
+        int32_t old = sky.planet, n = 0, k;
+        for (i = PL_SUN; i < PL_N; i++)
+            n += pl_up[i];
+        k = (int32_t)(rnd() % (uint32_t)(n ? n : PL_N - 1));
+        for (i = PL_SUN; i < PL_N; i++)  /* (none up: any of the seven) */
+            if ((!n || pl_up[i]) && !k--)
+                break;
+        sky.planet = i;
+        ui.chords_t0 = plat_ms();
+        ui.key_until = 0;
+        app_say(old == PL_NONE ? planet_name(i) : planet_name(old), old == PL_NONE ? "ITS SCALE" : "GONE");
     }
 }
 
@@ -2377,18 +2363,18 @@ static void input(void)
     } else if (e1 || e2 || e3 || e4 || ea) {
         app_say("NATURE", "EDIT TO CHANGE");
     }
-    if (down >> B_SEL & 1u || es) {      /* the next planet up (in EDIT any of the seven), or none */
+    if (down >> B_SEL & 1u || es) {      /* the next planet up (in EDIT any of the seven): one always */
         int32_t p = sky.planet, n, dir = es < 0 ? -1 : 1;
         for (n = 0; n < PL_N; n++) {
             p = ((p + dir) % PL_N + PL_N) % PL_N;
-            if (p == PL_NONE || set.manual || pl_up[p])
+            if (p != PL_NONE && (set.manual || pl_up[p]))
                 break;
         }
         if (p != sky.planet) {
             sky.planet = p;
             ui.chords_t0 = now;          /* its chords from the first */
             ui.key_until = 0;
-            app_say(p == PL_NONE ? "NO PLANET" : planet_name(p), p == PL_NONE ? "" : "ITS SCALE");
+            app_say(planet_name(p), "ITS SCALE");
         }
     }
     if (down >> B_OCTDN & 1u && set.octave > 1) { set.octave--; ui.dirty = 1; }
@@ -2478,8 +2464,8 @@ void app_frame(void)
         }
     }
     input();
-    if (ui.last_sky == 0 || now - ui.last_sky > (voy.going == 2 && fm_fabsf(voy_p() - 0.5f) < VOY_DISSOLVE ? 150u : 2000u)) {
-                                         /* the sky every 2 s: the stars move slowly (halfway on a voyage, often) */
+    if (ui.last_sky == 0 || now - ui.last_sky > (voy.going == 2 ? 400u : 2000u)) {
+                                         /* the sky every 2 s: the stars move slowly (on a voyage, faster) */
         ui.last_sky = now ? now : 1u;
         sky_update();
     }
