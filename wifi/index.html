@@ -1,0 +1,287 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later
+     Copyright (C) 2026 the COSMOS contributors
+     COSMOS's WiFi set up from the computer: the FM-1 over USB (Web MIDI), fm1-base's WiFi frames (device/main_fm1.c
+     wifi_frame: F0 7D 4C 57 op ... F7; text out as nibbles, the answers a line a frame, F0 7D 4C 57 10 <text> F7, then
+     F0 7D 4C 57 11 F7). The FM-1 is found the way the installer finds it (fm1ota.js, fm1-base's, MPL-2.0). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>COSMOS WiFi</title>
+<meta name="description" content="Set up COSMOS's WiFi from your computer: the FM-1 over USB, the password typed on a real keyboard.">
+<meta name="theme-color" content="#06080e">
+<link rel="icon" href="../img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+:root { --bg: #06080e; --panel: #0e121d; --rule: #1f2638; --text: #e9ecf5; --mid: #8f96ad; --accent: #cfd8ff;
+        --on-accent: #0a0d18; --good: #8ff0c0; --err: #ff8a8a;
+        --body: 'IBM Plex Sans', system-ui, sans-serif; --display: DotGothic16, 'IBM Plex Mono', monospace;
+        --mono: 'IBM Plex Mono', ui-monospace, monospace; color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { background: var(--bg); }
+body { margin: 0; color: var(--text); font: 16px/1.6 var(--body); }
+a { color: var(--accent); text-underline-offset: 3px; }
+main { max-width: 680px; margin: 0 auto; padding: 0 16px max(48px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 18px; }
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 0 4px; }
+header.top a.brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none;
+                     font: 400 18px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; }
+header.top img { width: 26px; height: 26px; image-rendering: pixelated; }
+h1 { margin: 0; font: 400 clamp(30px, 7vw, 44px)/1.1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.lead { margin: 6px 0 0; color: var(--mid); }
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 16px; padding: 16px; }
+.k { display: block; font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--mid); margin: 0 0 10px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.btn { display: inline-flex; align-items: center; justify-content: center; padding: 0 18px; min-height: 44px; border-radius: 12px;
+       border: 1px solid var(--rule); background: transparent; color: var(--text); font: 600 15px/1 var(--body); cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: default; }
+.state { font: 600 14px/1.5 var(--mono); }
+.state.on { color: var(--good); } .state.bad { color: var(--err); }
+.msg { color: var(--mid); font-size: 14px; min-height: 1.5em; margin: 10px 0 0; }
+.msg.bad { color: var(--err); } .msg.good { color: var(--good); }
+ul.nets { list-style: none; margin: 0; padding: 0; }
+ul.nets li { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-top: 1px solid var(--rule); }
+ul.nets li:first-child { border-top: 0; }
+ul.nets li button.pick { flex: 1; text-align: left; background: none; border: 0; color: var(--text); font: 15px/1.4 var(--body); cursor: pointer; padding: 0; }
+ul.nets li.sel button.pick { color: var(--accent); font-weight: 600; }
+.bars { font: 13px var(--mono); color: var(--mid); width: 3.5em; }
+.lock { color: var(--mid); font-size: 13px; }
+input[type=password], input[type=text] { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--rule);
+       border-radius: 10px; padding: 11px 12px; font: 16px/1.2 var(--mono); }
+label.show { display: flex; gap: 8px; align-items: center; color: var(--mid); font-size: 14px; margin: 8px 0 0; }
+.how { color: var(--mid); font-size: 15px; } .how b { color: var(--text); } .how ol { margin: 8px 0 0; padding-left: 20px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <a class="brand" href="../"><img src="../img/icon.png" alt="">COSMOS</a>
+    <a href="../install/">Install</a>
+  </header>
+  <section>
+    <h1>WiFi</h1>
+    <p class="lead">Set up your FM-1's WiFi from the computer: type the password on a real keyboard instead of the knobs. Connect the FM-1 by USB with COSMOS running, then press Connect. It works in Chrome or Edge; the browser asks once to allow MIDI: allow it.</p>
+  </section>
+
+  <section class="card">
+    <span class="k">The FM-1</span>
+    <div class="row">
+      <button class="btn primary" id="connect">Connect</button>
+      <span class="state" id="state">not connected</span>
+    </div>
+    <p class="msg" id="msg"></p>
+  </section>
+
+  <section class="card" id="netcard" hidden>
+    <span class="k">Networks around the FM-1</span>
+    <div class="row"><button class="btn" id="scan">Look again</button></div>
+    <ul class="nets" id="found"></ul>
+    <div id="joinbox" hidden>
+      <p style="margin:14px 0 8px">Password for <b id="joinname"></b></p>
+      <input type="password" id="pass" autocomplete="off" spellcheck="false" maxlength="63">
+      <label class="show"><input type="checkbox" id="showpass"> Show it</label>
+      <div class="row" style="margin-top:12px"><button class="btn primary" id="join">Join</button></div>
+    </div>
+    <p class="msg" id="joinmsg"></p>
+  </section>
+
+  <section class="card" id="savedcard" hidden>
+    <span class="k">Networks the FM-1 remembers</span>
+    <ul class="nets" id="saved"></ul>
+    <p class="msg">It joins the one in range by itself at every start (up to six, the latest first).</p>
+  </section>
+
+  <section class="how">
+    <b>Good to know</b>
+    <ol>
+      <li>The password goes from this page straight to the FM-1 through the USB cable: no server, no internet, and the page keeps nothing.</li>
+      <li>The FM-1 is found the way the installer finds it. Close other pages or apps that use MIDI (another installer or editor) if it isn't.</li>
+      <li>Hidden network? Type its name in the list's last row.</li>
+      <li>On the FM-1 itself, <b>ENV</b> shows the same: the networks, the state, the weather's age.</li>
+    </ol>
+  </section>
+</main>
+
+<script type="module">
+import { Updater } from "./fm1ota.js";
+
+const $ = (id) => document.getElementById(id);
+const LW = [0x7D, 0x4C, 0x57];
+const enc = new TextEncoder(), dec = new TextDecoder();
+let dev = null, busy = false, chosen = null, poll = null;
+
+function say(el, text, cls = "") { el.textContent = text; el.className = "msg " + cls; }
+
+// a WiFi frame out, and its answer's lines (until F0 7D 4C 57 11 F7)
+async function ask(op, payload = [], ms = 3000) {
+  while (busy) await new Promise((r) => setTimeout(r, 30));
+  busy = true;
+  try {
+    dev.link.drain();
+    if (!dev.link.send([0xF0, ...LW, op, ...payload, 0xF7])) throw new Error("lost");
+    const lines = [], end = Date.now() + ms;
+    while (Date.now() < end) {
+      const p = await dev.link.read(end - Date.now());
+      if (!p) break;
+      if (p.length < 6 || p[1] !== LW[0] || p[2] !== LW[1] || p[3] !== LW[2]) continue;
+      if (p[4] === 0x11) return lines;
+      if (p[4] === 0x10) lines.push(dec.decode(new Uint8Array(p.slice(5, -1))));
+    }
+    if (dev.link.lost) throw new Error("lost");
+    return lines;
+  } finally { busy = false; }
+}
+const nibbles = (bytes) => [...bytes].flatMap((b) => [b >> 4, b & 15]);
+
+// "<state> <ssid> <a.b.c.d> <rssi> rx <n>/s <r> <why>" (the name can hold spaces)
+function parseStatus(line) {
+  const m = /^(\S+) (.*) (\d+\.\d+\.\d+\.\d+) (-?\d+) rx \S+ \S+ ?(.*)$/.exec(line || "");
+  return m ? { state: m[1], ssid: m[2] === "-" ? "" : m[2], ip: m[3], rssi: +m[4], why: m[5] } : null;
+}
+const bars = (rssi) => rssi >= -55 ? "▂▄▆█" : rssi >= -67 ? "▂▄▆" : rssi >= -78 ? "▂▄" : "▂";
+
+async function status() {
+  const s = parseStatus((await ask(4))[0]);
+  const el = $("state");
+  if (!s) { el.textContent = "?"; return null; }
+  el.className = "state" + (s.state === "connected" ? " on" : s.state === "failed" ? " bad" : "");
+  el.textContent = s.state === "connected" ? `connected to ${s.ssid} ${bars(s.rssi)}`
+                 : s.state === "off" ? "WiFi off" : s.state + (s.ssid ? " " + s.ssid : "") + (s.why ? " (" + s.why + ")" : "");
+  return s;
+}
+
+async function scan() {
+  $("scan").disabled = true;
+  $("found").innerHTML = "<li><span class='lock'>looking…</span></li>";
+  await ask(3);
+  await new Promise((r) => setTimeout(r, 3500));
+  const lines = await ask(8);
+  $("scan").disabled = false;
+  const ul = $("found");
+  ul.innerHTML = "";
+  const seen = new Set();
+  for (const l of lines) {                        // "<rssi> <secured> ch<channel> <ssid>"
+    const m = /^(-?\d+) ([01]) ch\d+ (.*)$/.exec(l);
+    if (!m || !m[3] || seen.has(m[3])) continue;
+    seen.add(m[3]);
+    ul.appendChild(netRow(m[3], +m[1], m[2] === "1"));
+  }
+  const li = document.createElement("li");      // a hidden network: its name typed
+  const inp = document.createElement("input");
+  inp.type = "text"; inp.placeholder = "Other network (hidden): its name"; inp.maxLength = 32;
+  inp.addEventListener("input", () => { if (inp.value.trim()) choose(inp.value.trim(), true, li); });
+  li.appendChild(inp);
+  ul.appendChild(li);
+  if (!seen.size) say($("joinmsg"), "No network heard. Look again, or type its name below.");
+}
+function netRow(ssid, rssi, secured) {
+  const li = document.createElement("li"), b = document.createElement("button");
+  b.className = "pick"; b.textContent = ssid;
+  b.addEventListener("click", () => choose(ssid, secured, li));
+  li.innerHTML = `<span class="bars">${bars(rssi)}</span>`;
+  li.appendChild(b);
+  li.insertAdjacentHTML("beforeend", secured ? "<span class='lock'>🔒</span>" : "<span class='lock'>open</span>");
+  return li;
+}
+function choose(ssid, secured, li) {
+  chosen = ssid;
+  for (const x of $("found").children) x.classList.toggle("sel", x === li);
+  $("joinname").textContent = ssid;
+  $("pass").value = "";
+  $("pass").parentElement.querySelectorAll("input,label").forEach((x) => { x.hidden = !secured; });
+  $("joinbox").hidden = false;
+  say($("joinmsg"), "");
+  if (secured) $("pass").focus();
+}
+
+async function join() {
+  const pass = $("pass").hidden ? "" : $("pass").value;
+  if (!$("pass").hidden && pass.length && pass.length < 8) { say($("joinmsg"), "A WiFi password has 8 characters at least.", "bad"); return; }
+  const payload = nibbles(enc.encode(chosen));
+  if (!$("pass").hidden) payload.push(0, 0, ...nibbles(enc.encode(pass)));
+  $("join").disabled = true;
+  say($("joinmsg"), `Joining ${chosen}…`);
+  await ask(7, payload);
+  $("pass").value = "";
+  const end = Date.now() + 30000;
+  for (;;) {                                      // its state until it is in, or failed
+    await new Promise((r) => setTimeout(r, 1500));
+    const s = await status();
+    if (s && s.state === "connected" && s.ssid === chosen) {
+      say($("joinmsg"), `Connected. The FM-1 remembers ${chosen} and joins it by itself from now on.`, "good");
+      break;
+    }
+    if ((s && s.state === "failed") || Date.now() > end) {
+      say($("joinmsg"), `It didn't connect${s && s.why ? " (" + s.why + ")" : ""}. Check the password and try again.`, "bad");
+      break;
+    }
+  }
+  $("join").disabled = false;
+  await savedList();
+}
+
+async function savedList() {
+  const lines = await ask(5);
+  const ul = $("saved");
+  ul.innerHTML = "";
+  $("savedcard").hidden = !lines.length;
+  lines.forEach((ssid, i) => {
+    const li = document.createElement("li"), b = document.createElement("button");
+    li.innerHTML = "<span style='flex:1'></span>";
+    li.firstChild.textContent = ssid;
+    b.className = "btn"; b.textContent = "Forget";
+    b.addEventListener("click", async () => {
+      if (!confirm(`Forget ${ssid}? The FM-1 won't join it by itself any more.`)) return;
+      await ask(6, [i]);
+      await savedList();
+    });
+    li.appendChild(b);
+    ul.appendChild(li);
+  });
+}
+
+$("connect").addEventListener("click", async () => {
+  const msg = $("msg");
+  if (!navigator.requestMIDIAccess) { say(msg, "This browser has no Web MIDI: use Chrome or Edge on a computer.", "bad"); return; }
+  let midi;
+  try { midi = await navigator.requestMIDIAccess({ sysex: true }); }
+  catch (e) { say(msg, "MIDI was not allowed. Allow it (the icon in the address bar) and press Connect again.", "bad"); return; }
+  $("connect").disabled = true;
+  say(msg, "Looking for the FM-1…");
+  if (dev) { dev.link.close(); dev = null; }
+  try { dev = await new Updater(midi).find((id) => !/^ota-/i.test(id.model)); } catch (e) { dev = null; }
+  $("connect").disabled = false;
+  if (!dev) {
+    say(msg, "No FM-1 found. Check the USB cable (a data cable), close other pages or apps using MIDI, and press Connect again.", "bad");
+    return;
+  }
+  try {
+    let s = await status();
+    if (!s) { say(msg, `Found ${dev.id.text}, but it doesn't answer about WiFi: is it running COSMOS 1.0 or later?`, "bad"); return; }
+    if (s.state === "off") {                       // offline on the FM-1: on, from here
+      await ask(1);
+      await new Promise((r) => setTimeout(r, 1500));
+      s = await status();
+    }
+    say(msg, `${dev.id.text} on ${dev.name}.`, "good");
+    $("connect").textContent = "Connect again";
+    $("netcard").hidden = false;
+    await savedList();
+    await scan();
+    clearInterval(poll);
+    poll = setInterval(() => { if (!busy) status().catch(() => {}); }, 5000);
+  } catch (e) {
+    say(msg, "The FM-1 went away (unplugged?). Connect it and press Connect again.", "bad");
+  }
+});
+$("scan").addEventListener("click", () => scan().catch(() => say($("msg"), "The FM-1 went away. Press Connect again.", "bad")));
+$("join").addEventListener("click", () => join().catch(() => say($("msg"), "The FM-1 went away. Press Connect again.", "bad")));
+$("pass").addEventListener("keydown", (e) => { if (e.key === "Enter") $("join").click(); });
+$("showpass").addEventListener("change", (e) => { $("pass").type = e.target.checked ? "text" : "password"; });
+</script>
+</body>
+</html>
