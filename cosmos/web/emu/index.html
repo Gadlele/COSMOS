@@ -90,11 +90,17 @@ header.top nav a:hover { color: var(--ink); }
 .lead { color: var(--muted); max-width: 70ch; margin: 0 0 18px; }
 .howto { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .6rem 2rem; margin: 1.4rem 0 0; color: var(--muted); }
 .howto b { color: var(--teal); font-weight: 700; }
+.lefthead { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.kofi { font: 600 13px/1 ui-monospace, monospace; color: #ff9fb0; text-decoration: none; border: 1px solid rgba(255, 159, 176, .45); border-radius: 99px; padding: 6px 11px; white-space: nowrap; letter-spacing: normal; text-transform: none; display: inline-block; }
+.kofi:hover { background: rgba(255, 159, 176, .12); }
 </style>
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="../"><img src="../img/icon.png" alt="">COSMOS</a>
+  <div class="lefthead">
+    <a class="brand" href="../"><img src="../img/icon.png" alt="">COSMOS</a>
+    <a class="kofi" href="https://ko-fi.com/gadlele" target="_blank" rel="noopener" title="Support COSMOS on Ko-fi">&#9829; Ko-fi</a>
+  </div>
   <nav><a href="../">Home</a><a href="../install/">Install</a><a href="https://github.com/Gadlele/COSMOS">Source</a></nav>
 </header>
 
